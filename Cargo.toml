@@ -1,0 +1,22 @@
+[package]
+name = "cbmix"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+directories = "5.0"
+thiserror = "1.0"
+regex = "1.7"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+axum = { version = "0.6", features = ["macros"] }
+tokio = { version = "1.26", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.4", features = ["trace"] }
+
+# [dependencies.ola]
+# git = "https://github.com/jbellerb/libola-rs.git"
+# features = ["tokio"]
