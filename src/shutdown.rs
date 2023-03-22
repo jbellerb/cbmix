@@ -1,14 +1,14 @@
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{mpsc, watch};
 
 pub struct Sender {
-    notify: broadcast::Sender<()>,
+    notify: watch::Sender<()>,
     complete_tx: mpsc::Sender<()>,
     complete_rx: mpsc::Receiver<()>,
 }
 
 impl Sender {
     pub fn new() -> Self {
-        let (notify, _) = broadcast::channel(1);
+        let (notify, _) = watch::channel(());
         let (complete_tx, complete_rx) = mpsc::channel(1);
 
         Self {
@@ -43,14 +43,15 @@ impl Default for Sender {
     }
 }
 
+#[derive(Clone)]
 pub struct Receiver {
-    notify: broadcast::Receiver<()>,
+    notify: watch::Receiver<()>,
     complete: mpsc::Sender<()>,
 }
 
 impl Receiver {
     pub async fn recv(&mut self) {
-        let _ = self.notify.recv().await;
+        let _ = self.notify.changed().await;
     }
 
     pub async fn force_shutdown(self) {

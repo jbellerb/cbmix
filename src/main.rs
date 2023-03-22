@@ -11,7 +11,6 @@ use interface::Interface;
 use directories::ProjectDirs;
 use tokio::{
     runtime::Runtime,
-    select,
     signal::unix::{signal, SignalKind},
     time::timeout,
 };
@@ -38,7 +37,7 @@ fn main() {
 
         tokio::spawn(interface.serve().instrument(info_span!("interface")));
 
-        select! {
+        tokio::select! {
             _ = unix_signal(SignalKind::interrupt()) => {
                 info!("received SIGINT, shutting down");
             },
