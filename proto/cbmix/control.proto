@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package cbmix;
+
+import "cbmix/scene.proto";
+import "google/protobuf/empty.proto";
+
+// An event representing a change in a scene.
+message SceneUpdateEvent {
+  // The updated scene.
+  Scene scene = 1;
+}
+
+// Stage control service for the control interface.
+service ControlService {
+  // Get a list of created playbooks.
+  rpc GetPlaybooks(google.protobuf.Empty) returns (Playbooks);
+  // Get the scenes stored in a playbook.
+  rpc GetScenes(PlaybookId) returns (Scenes);
+  // Get the UUID of the current scene.
+  rpc GetCurrentScene(google.protobuf.Empty) returns (SceneId);
+  // Change the current scene.
+  rpc SetCurrentScene(SceneId) returns (google.protobuf.Empty);
+  // Subscribe to a scene to be notified when it changes.
+  rpc Subscribe(SceneId) returns (Scene);
+  // Unsubscribe from a scene.
+  rpc Unsubscribe(SceneId) returns (google.protobuf.Empty);
+  // Modify a scene definition.
+  rpc UpdateScene(Scene) returns (google.protobuf.Empty);
+  // Create a new scene definition.
+  rpc CreateScene(google.protobuf.Empty) returns (Scene);
+  // Delete a scene definition.
+  rpc DeleteScene(SceneId) returns (google.protobuf.Empty);
+}

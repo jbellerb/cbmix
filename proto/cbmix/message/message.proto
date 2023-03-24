@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package cbmix.message;
+
+// The type of a message being sent.
+enum MessageType {
+  // An unfinished message. Messages of this type throw an error.
+  MESSAGE_TYPE_UNSPECIFIED = 0;
+  // An event sent between the client and server.
+  MESSAGE_TYPE_EVENT = 1;
+  // A request sent by the client.
+  MESSAGE_TYPE_REQUEST = 2;
+  // A response sent by the server.
+  MESSAGE_TYPE_RESPONSE = 3;
+  // A response sent by the server for failed request.
+  MESSAGE_TYPE_RESPONSE_ERROR = 4;
+}
+
+// Underlying message format that is sent over the socket.
+message Message {
+  // The type of the message being sent.
+  MessageType type = 1;
+  // An unsigned integer representing which request a response is associated
+  // with. These should be generated sequentially to minimize the chance of a
+  // collision.
+  optional uint32 id = 2;
+  // The name of the event or RPC function the message is associated with.
+  optional string name = 3;
+  // Protobuf-encoded message of the appropriate type for the event or method.
+  // UTF-8 encoded error text in the case of an error.
+  optional bytes body = 4;
+}

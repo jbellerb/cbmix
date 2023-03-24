@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package cbmix;
+
+// A UUID representing a scene.
+message SceneId {
+  string id = 1;
+}
+
+// A lighting preset.
+message Scene {
+  // The id of the scene.
+  string id = 1;
+  // The name of the scene.
+  optional string name = 2;
+  // The values of the scene.
+  optional bytes universe = 3;
+  // The transition time in milliseconds.
+  optional uint32 delay = 4;
+}
+
+// A collection of scenes.
+message Scenes {
+  // The scenes.
+  repeated Scene scenes = 1;
+}
+
+// A UUID representing a playbook.
+message PlaybookId {
+  string id = 1;
+}
+
+// A logical group of scenes.
+message Playbook {
+  // The id of the playbook.
+  string id = 1;
+  // The name of the playbook.
+  string name = 2;
+}
+
+// A collection of playbooks.
+message Playbooks {
+  // The playbooks.
+  repeated Playbook playbooks = 1;
+}

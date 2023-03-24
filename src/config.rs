@@ -11,7 +11,7 @@ use serde::{
 };
 use thiserror::Error;
 
-pub const DEFAULT_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(60);
+pub const DEFAULT_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(30);
 
 #[derive(Error, Clone, Debug)]
 pub enum Error {
