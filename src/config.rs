@@ -1,8 +1,7 @@
 use std::fs::read_to_string;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::time::Duration;
-
-use crate::interface;
 
 use regex::Regex;
 use serde::{
@@ -10,6 +9,10 @@ use serde::{
     Deserialize,
 };
 use thiserror::Error;
+
+pub const DEFAULT_LISTEN_ADDR: &str = "[::0]:8080";
+
+pub const DEFAULT_OUTPUT_UNIVERSE: u32 = 1;
 
 pub const DEFAULT_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(30);
 
@@ -23,11 +26,28 @@ pub enum Error {
 #[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default)]
-    pub interface: interface::Config,
+    pub interface: InterfaceConfig,
+
+    #[serde(default)]
+    pub output: OutputConfig,
 
     #[serde(deserialize_with = "deserialize_duration")]
     #[serde(default = "default_shutdown_grace_period")]
     pub shutdown_grace_period: Duration,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct InterfaceConfig {
+    #[serde(default = "default_listen_addr")]
+    pub listen_addr: SocketAddr,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct OutputConfig {
+    #[serde(default = "default_output_universe")]
+    pub universe: u32,
 }
 
 impl Config {
@@ -45,9 +65,34 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             interface: Default::default(),
+            output: Default::default(),
             shutdown_grace_period: default_shutdown_grace_period(),
         }
     }
+}
+
+impl Default for InterfaceConfig {
+    fn default() -> Self {
+        Self {
+            listen_addr: default_listen_addr(),
+        }
+    }
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        Self {
+            universe: default_output_universe(),
+        }
+    }
+}
+
+fn default_listen_addr() -> SocketAddr {
+    DEFAULT_LISTEN_ADDR.parse().unwrap()
+}
+
+fn default_output_universe() -> u32 {
+    DEFAULT_OUTPUT_UNIVERSE
 }
 
 fn default_shutdown_grace_period() -> Duration {

@@ -1,8 +1,7 @@
-pub mod config;
 mod event;
 
+use crate::config::InterfaceConfig;
 use crate::shutdown;
-pub use config::Config;
 use event::{next, Error as EventError, Event};
 
 use axum::{
@@ -19,7 +18,7 @@ use tower_http::{
 use tracing::{error, info, Level};
 
 pub struct Interface {
-    config: Config,
+    config: InterfaceConfig,
     shutdown: shutdown::Receiver,
 }
 
@@ -29,7 +28,7 @@ struct ServerState {
 }
 
 impl Interface {
-    pub fn new(config: Config, shutdown: shutdown::Receiver) -> Self {
+    pub fn new(config: InterfaceConfig, shutdown: shutdown::Receiver) -> Self {
         Self { config, shutdown }
     }
 
