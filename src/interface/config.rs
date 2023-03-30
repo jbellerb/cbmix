@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use serde::Deserialize;
 
-pub const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:8080";
+pub const DEFAULT_LISTEN_ADDR: &str = "[::0]:8080";
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]

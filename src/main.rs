@@ -2,6 +2,15 @@ pub mod config;
 pub mod interface;
 pub mod shutdown;
 
+pub mod proto {
+    pub mod cbmix {
+        include!(concat!(env!("OUT_DIR"), "/cbmix.rs"));
+        pub mod message {
+            include!(concat!(env!("OUT_DIR"), "/cbmix.message.rs"));
+        }
+    }
+}
+
 use std::env::var;
 use std::process::exit;
 

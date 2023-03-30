@@ -1,9 +1,9 @@
-mod config;
+pub mod config;
 mod event;
 
 use crate::shutdown;
 pub use config::Config;
-use event::{next, Event};
+use event::{next, Error as EventError, Event};
 
 use axum::{
     extract::{ws::WebSocketUpgrade, State},
@@ -70,9 +70,10 @@ async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) 
     ws.on_upgrade(|mut socket| async move {
         loop {
             let event = tokio::select! {
-                frame = next(&mut socket) => match frame {
-                    Some(event) => event,
-                    None => return
+                message = next(&mut socket) => match message {
+                    Some(Ok(event)) => event,
+                    None | Some(Err(EventError::Socket)) => return,
+                    _ => continue,
                 },
                 _ = state.shutdown.recv() => {
                     if let Err(e) = socket.close().await {
@@ -84,11 +85,8 @@ async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) 
             };
 
             match event {
-                Event::WsMessage(msg) => {
-                    info!("recieved: {:?}, echoing", msg);
-                    if socket.send(msg).await.is_err() {
-                        return;
-                    }
+                Event::SceneUpdate(event) => {
+                    info!("recieved: {:?}", event);
                 }
             }
         }
