@@ -88,6 +88,9 @@ async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) 
                 Event::SceneUpdate(event) => {
                     info!("recieved: {:?}", event);
                 }
+                Event::SetCurrentSceneRequest(event) => {
+                    info!("recieved: {:?}", event);
+                }
             }
         }
     })

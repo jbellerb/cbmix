@@ -1,5 +1,5 @@
 use crate::proto::cbmix::message::{Message, MessageType};
-use crate::proto::cbmix::SceneUpdateEvent;
+use crate::proto::cbmix::{SceneId, SceneUpdateEvent};
 
 use axum::extract::ws::{Message as WsMessage, WebSocket};
 use prost::Message as MessageTrait;
@@ -25,21 +25,28 @@ pub enum Error {
 #[derive(Debug)]
 pub enum Event {
     SceneUpdate(SceneUpdateEvent),
+    SetCurrentSceneRequest(SceneId),
 }
 
 impl TryFrom<Message> for Event {
     type Error = Error;
 
     fn try_from(value: Message) -> Result<Self, Self::Error> {
-        if value.r#type() != MessageType::Event {
-            error!("recieved message of type {}", value.r#type);
-            return Err(Error::UnexpectedType);
-        }
+        // if value.r#type() != MessageType::Event {
+        //     error!("recieved message of type {}", value.r#type);
+        //     return Err(Error::UnexpectedType);
+        // }
 
         if let (Some(name), Some(body)) = (value.name, value.body) {
             match name.as_str() {
                 "SceneUpdate" => Ok(Event::SceneUpdate(
                     SceneUpdateEvent::decode(&*body).map_err(|e| {
+                        error!("error parsing scene update event: {}", e);
+                        Error::Decode
+                    })?,
+                )),
+                "SetCurrentScene" => Ok(Event::SetCurrentSceneRequest(
+                    SceneId::decode(&*body).map_err(|e| {
                         error!("error parsing scene update event: {}", e);
                         Error::Decode
                     })?,
