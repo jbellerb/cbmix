@@ -1,3 +1,4 @@
+use crate::event::Event;
 use crate::proto::cbmix::message::{Message, MessageType};
 use crate::proto::cbmix::{SceneId, SceneUpdateEvent};
 
@@ -22,44 +23,34 @@ pub enum Error {
     IncompleteEvent,
 }
 
-#[derive(Debug)]
-pub enum Event {
-    SceneUpdate(SceneUpdateEvent),
-    SetCurrentSceneRequest(SceneId),
-}
+fn message_event(value: Message) -> Result<Event, Error> {
+    // if value.r#type() != MessageType::Event {
+    //     error!("recieved message of type {}", value.r#type);
+    //     return Err(Error::UnexpectedType);
+    // }
 
-impl TryFrom<Message> for Event {
-    type Error = Error;
-
-    fn try_from(value: Message) -> Result<Self, Self::Error> {
-        // if value.r#type() != MessageType::Event {
-        //     error!("recieved message of type {}", value.r#type);
-        //     return Err(Error::UnexpectedType);
-        // }
-
-        if let (Some(name), Some(body)) = (value.name, value.body) {
-            match name.as_str() {
-                "SceneUpdate" => Ok(Event::SceneUpdate(
-                    SceneUpdateEvent::decode(&*body).map_err(|e| {
-                        error!("error parsing scene update event: {}", e);
-                        Error::Decode
-                    })?,
-                )),
-                "SetCurrentScene" => Ok(Event::SetCurrentSceneRequest(
-                    SceneId::decode(&*body).map_err(|e| {
-                        error!("error parsing scene update event: {}", e);
-                        Error::Decode
-                    })?,
-                )),
-                _ => {
-                    error!("recieved unknown \"{}\" event", name);
-                    Err(Error::UnknownEvent)
-                }
+    if let (Some(name), Some(body)) = (value.name, value.body) {
+        match name.as_str() {
+            "SceneUpdate" => Ok(Event::SceneUpdate(
+                SceneUpdateEvent::decode(&*body).map_err(|e| {
+                    error!("error parsing scene update event: {}", e);
+                    Error::Decode
+                })?,
+            )),
+            "SetCurrentScene" => Ok(Event::SceneSwitch(SceneId::decode(&*body).map_err(
+                |e| {
+                    error!("error parsing scene update event: {}", e);
+                    Error::Decode
+                },
+            )?)),
+            _ => {
+                error!("recieved unknown \"{}\" event", name);
+                Err(Error::UnknownEvent)
             }
-        } else {
-            error!("recieved incomplete event");
-            Err(Error::IncompleteEvent)
         }
+    } else {
+        error!("recieved incomplete event");
+        Err(Error::IncompleteEvent)
     }
 }
 
@@ -73,7 +64,7 @@ pub(super) async fn next(socket: &mut WebSocket) -> Option<Result<Event, Error>>
                 });
 
                 match message {
-                    Ok(m) => Some(m.try_into()),
+                    Ok(m) => Some(message_event(m)),
                     Err(e) => Some(Err(e)),
                 }
             }

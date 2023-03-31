@@ -1,5 +1,6 @@
 use tokio::sync::{mpsc, watch};
 
+#[derive(Debug)]
 pub struct Sender {
     notify: watch::Sender<()>,
     complete_tx: mpsc::Sender<()>,
@@ -43,7 +44,7 @@ impl Default for Sender {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Receiver {
     notify: watch::Receiver<()>,
     complete: mpsc::Sender<()>,

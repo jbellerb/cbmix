@@ -1,4 +1,6 @@
 pub mod config;
+pub mod dmx;
+pub mod event;
 pub mod interface;
 pub mod shutdown;
 
@@ -15,6 +17,7 @@ use std::env::var;
 use std::process::exit;
 
 use config::Config;
+use dmx::DmxStage;
 use interface::Interface;
 
 use directories::ProjectDirs;
@@ -42,8 +45,15 @@ fn main() {
     build_runtime().block_on(async move {
         let mut shutdown = shutdown::Sender::new();
 
-        let interface = Interface::new(config.interface, shutdown.subscribe());
+        let dmx = DmxStage::new(config.output, shutdown.subscribe());
+        let interface = Interface::new(
+            config.interface,
+            dmx.sender(),
+            dmx.subscribe(),
+            shutdown.subscribe(),
+        );
 
+        tokio::spawn(dmx.serve().instrument(info_span!("dmx")));
         tokio::spawn(interface.serve().instrument(info_span!("interface")));
 
         tokio::select! {
