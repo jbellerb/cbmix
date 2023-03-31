@@ -145,6 +145,7 @@ dependencies = [
  "axum",
  "bytes",
  "directories",
+ "ola",
  "prost",
  "prost-build",
  "prost-types",
@@ -585,6 +586,20 @@ checksum = "0fac9e2da13b5eb447a6ce3d392f23a29d8694bff781bf03a16cd9ac8697593b"
 dependencies = [
  "hermit-abi 0.2.6",
  "libc",
+]
+
+[[package]]
+name = "ola"
+version = "0.1.0"
+source = "git+https://github.com/jbellerb/libola-rs#4429e08dc2959f02d7850c0346e1b7b19bbfc820"
+dependencies = [
+ "bytes",
+ "proc-macro2",
+ "prost",
+ "prost-build",
+ "quote",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

@@ -45,7 +45,13 @@ fn main() {
     build_runtime().block_on(async move {
         let mut shutdown = shutdown::Sender::new();
 
-        let dmx = DmxStage::new(config.output, shutdown.subscribe());
+        let dmx = match DmxStage::new(config.output, shutdown.subscribe()).await {
+            Ok(dmx) => dmx,
+            Err(e) => {
+                eprintln!("Error setting up DMX connections\n{}", e);
+                exit(1);
+            }
+        };
         let interface = Interface::new(
             config.interface,
             dmx.sender(),
