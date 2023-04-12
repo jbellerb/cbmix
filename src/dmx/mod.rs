@@ -1,4 +1,3 @@
-use crate::config::OutputConfig;
 use crate::event::Event;
 use crate::proto::cbmix::{Scene, SceneUpdateEvent};
 use crate::shutdown;
@@ -21,7 +20,6 @@ pub enum Error {
 }
 
 pub struct DmxStage {
-    config: OutputConfig,
     client: StreamingClientAsync<TcpStream>,
     incoming_tx: mpsc::Sender<Event>,
     incoming_rx: mpsc::Receiver<Event>,
@@ -30,13 +28,12 @@ pub struct DmxStage {
 }
 
 impl DmxStage {
-    pub async fn new(config: OutputConfig, shutdown: shutdown::Receiver) -> Result<Self, Error> {
+    pub async fn new(shutdown: shutdown::Receiver) -> Result<Self, Error> {
         let (incoming_tx, incoming_rx) = mpsc::channel(INCOMING_BUFFER_SIZE);
         let (outgoing_tx, _) = broadcast::channel(OUTGOING_BUFFER_SIZE);
         let client = connect_async().await?;
 
         Ok(Self {
-            config,
             client,
             incoming_tx,
             incoming_rx,
@@ -82,10 +79,7 @@ impl DmxStage {
         if let Some(universe) = &scene.universe {
             let buffer = DmxBuffer::try_from(universe.clone());
             if let Ok(buffer) = buffer {
-                self.client
-                    .send_dmx(self.config.universe, &buffer)
-                    .await
-                    .unwrap();
+                self.client.send_dmx(1, &buffer).await.unwrap();
                 trace!("sent buffer to ola: {:?}", buffer);
             } else {
                 error!("scene event contained invalid universe buffer");

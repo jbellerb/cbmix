@@ -4,13 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+bytes = "1.4"
 directories = "5.0"
+ola = { git = "https://github.com/jbellerb/libola-rs", features = ["tokio"] }
 regex = "1.7"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 toml = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.3", features = ["v4", "v5"] }
 
 axum = { version = "0.6", features = ["macros", "ws"] }
 prost = "0.11"
@@ -19,9 +22,6 @@ tokio = { version = "1.26", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tower = "0.4"
 tower-http = { version = "0.4", features = ["trace"] }
-
-bytes = "1.4"
-ola = { git = "https://github.com/jbellerb/libola-rs", features = ["tokio"] }
 
 [build-dependencies]
 prost-build = "0.11"

@@ -2,6 +2,7 @@ pub mod config;
 pub mod dmx;
 pub mod event;
 pub mod interface;
+pub mod scene;
 pub mod shutdown;
 
 pub mod proto {
@@ -45,7 +46,7 @@ fn main() {
     build_runtime().block_on(async move {
         let mut shutdown = shutdown::Sender::new();
 
-        let dmx = match DmxStage::new(config.output, shutdown.subscribe()).await {
+        let dmx = match DmxStage::new(shutdown.subscribe()).await {
             Ok(dmx) => dmx,
             Err(e) => {
                 eprintln!("Error setting up DMX connections\n{}", e);
