@@ -142,8 +142,8 @@ where
     for digit in &mut hex {
         match digit {
             b'0'..=b'9' => *digit -= b'0',
-            b'A'..=b'F' => *digit -= b'A' + 10,
-            b'a'..=b'f' => *digit -= b'a' + 10,
+            b'A'..=b'F' => *digit -= b'A' - 10,
+            b'a'..=b'f' => *digit -= b'a' - 10,
             _ => {
                 return Err(D::Error::invalid_value(
                     Unexpected::Char(*digit as char),
