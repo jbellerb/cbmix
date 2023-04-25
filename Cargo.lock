@@ -146,6 +146,7 @@ dependencies = [
  "bytes",
  "directories",
  "ola",
+ "petgraph",
  "prost",
  "prost-build",
  "prost-types",

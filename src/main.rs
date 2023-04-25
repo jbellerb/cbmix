@@ -20,6 +20,7 @@ use std::process::exit;
 use config::Config;
 use dmx::DmxStage;
 use interface::Interface;
+use scene::SceneGraph;
 
 use directories::ProjectDirs;
 use tokio::{
@@ -45,6 +46,10 @@ fn main() {
 
     build_runtime().block_on(async move {
         let mut shutdown = shutdown::Sender::new();
+
+        let scene = SceneGraph::from_config(&config);
+
+        println!("{:?}", scene);
 
         let dmx = match DmxStage::new(shutdown.subscribe()).await {
             Ok(dmx) => dmx,
