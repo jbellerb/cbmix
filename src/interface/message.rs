@@ -1,4 +1,4 @@
-use crate::event::Event;
+use crate::mix::event::Event;
 use crate::proto::cbmix::message::{Message, MessageType};
 use crate::proto::cbmix::{SceneId, SceneUpdateEvent};
 

@@ -12,10 +12,21 @@ use petgraph::{
     },
     Direction,
 };
+use thiserror::Error;
+use tokio::sync::mpsc;
+use tracing::trace;
 use uuid::Uuid;
 
 // UUID namespace ID for scene graph nodes
 pub const NAMESPACE_SCENE: Uuid = Uuid::from_u128(0x57e02364b4e34787ae21bf4dde8dbdef);
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("Node is not an input")]
+    Input,
+    #[error("No output with id {0}")]
+    Subscribe(Uuid),
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct SceneGraph(HashMap<Uuid, Node>);
@@ -25,7 +36,7 @@ impl SceneGraph {
         Default::default()
     }
 
-    pub fn from_config(config: &Config) -> Self {
+    pub fn from_config(config: &Config) -> Result<Self, Error> {
         let mut map = HashMap::new();
 
         for (key, value) in config.input.iter() {
@@ -41,11 +52,22 @@ impl SceneGraph {
             if let Some(Node::Input { outputs, .. }) = map.get_mut(input) {
                 outputs.push(*key);
             } else {
-                panic!("bad output");
+                return Err(Error::Input);
             }
         }
 
-        Self(map)
+        Ok(Self(map))
+    }
+
+    pub fn subscribe(&mut self, output: &Uuid, tx: mpsc::Sender<DmxBuffer>) -> Result<(), Error> {
+        if let Some(Node::Output { subscribers, .. }) = self.0.get_mut(output) {
+            trace!("registering new subscriber with output {}", output);
+            subscribers.push(tx);
+
+            Ok(())
+        } else {
+            Err(Error::Subscribe(*output))
+        }
     }
 }
 
@@ -110,7 +132,7 @@ impl<'a> IntoNeighborsDirected for &'a SceneGraph {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum Node {
     Input {
         outputs: Vec<Uuid>,
@@ -118,6 +140,7 @@ pub enum Node {
     },
     Output {
         input: Uuid,
+        subscribers: Vec<mpsc::Sender<DmxBuffer>>,
     },
 }
 
@@ -136,6 +159,7 @@ impl Node {
             input: match output {
                 OutputConfig::Sacn { from, .. } => *from,
             },
+            subscribers: Vec::new(),
         }
     }
 }
@@ -144,7 +168,7 @@ impl<'a> Node {
     fn get(&'a self, i: usize) -> Option<Uuid> {
         match self {
             Node::Input { .. } => None,
-            Node::Output { input } => match i {
+            Node::Output { input, .. } => match i {
                 0 => Some(*input),
                 _ => None,
             },

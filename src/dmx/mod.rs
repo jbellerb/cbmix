@@ -1,85 +1,83 @@
-use crate::event::Event;
+use std::collections::{BTreeMap, HashMap};
+
+use crate::config::OutputConfig;
+use crate::mix::event::Event;
 use crate::proto::cbmix::{Scene, SceneUpdateEvent};
 use crate::shutdown;
 
 use ola::{connect_async, DmxBuffer, StreamingClientAsync};
 use thiserror::Error;
-use tokio::{
-    net::TcpStream,
-    sync::{broadcast, mpsc},
-};
-use tracing::{debug, error, info, trace};
+use tokio::{net::TcpStream, sync::mpsc};
+use tracing::{debug, error, trace};
+use uuid::Uuid;
 
-const INCOMING_BUFFER_SIZE: usize = 30;
 const OUTGOING_BUFFER_SIZE: usize = 15;
 
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Underlying DMX error: {0}")]
     Dmx(#[from] ola::Error),
+    #[error("Failed to subscribe to mixer")]
+    Mixer,
 }
 
-pub struct DmxStage {
+pub struct Dmx {
     client: StreamingClientAsync<TcpStream>,
-    incoming_tx: mpsc::Sender<Event>,
-    incoming_rx: mpsc::Receiver<Event>,
-    outgoing_tx: broadcast::Sender<Event>,
+    mixer_tx: mpsc::Sender<Event>,
+    mixer_rx: mpsc::Receiver<DmxBuffer>,
+    universes: HashMap<Uuid, u32>,
     shutdown: shutdown::Receiver,
 }
 
-impl DmxStage {
-    pub async fn new(shutdown: shutdown::Receiver) -> Result<Self, Error> {
-        let (incoming_tx, incoming_rx) = mpsc::channel(INCOMING_BUFFER_SIZE);
-        let (outgoing_tx, _) = broadcast::channel(OUTGOING_BUFFER_SIZE);
+impl Dmx {
+    pub async fn new(
+        config: BTreeMap<Uuid, OutputConfig>,
+        mixer_tx: mpsc::Sender<Event>,
+        shutdown: shutdown::Receiver,
+    ) -> Result<Self, Error> {
+        let (subscription, mixer_rx) = mpsc::channel(OUTGOING_BUFFER_SIZE);
+        let mut universes = HashMap::new();
+
+        for (id, output) in config.iter() {
+            if let OutputConfig::Sacn { universe, .. } = output {
+                universes.insert(*id, *universe);
+                mixer_tx
+                    .send(Event::Subscribe(*id, subscription.clone()))
+                    .await
+                    .map_err(|_| Error::Mixer)?;
+            }
+        }
+
         let client = connect_async().await?;
 
         Ok(Self {
             client,
-            incoming_tx,
-            incoming_rx,
-            outgoing_tx,
+            mixer_tx,
+            mixer_rx,
+            universes,
             shutdown,
         })
     }
 
-    pub fn sender(&self) -> mpsc::Sender<Event> {
-        self.incoming_tx.clone()
-    }
-
-    pub fn subscribe(&self) -> broadcast::Receiver<Event> {
-        self.outgoing_tx.subscribe()
-    }
-
     pub async fn serve(mut self) {
         loop {
-            let event = tokio::select! {
-                event = self.incoming_rx.recv() => match event {
-                    Some(event) => event,
+            let update = tokio::select! {
+                update = self.mixer_rx.recv() => match update {
+                    Some(update) => update,
                     None => return,
                 },
                 _ = self.shutdown.recv() => return,
             };
 
-            match event {
-                Event::SceneUpdate(event) => {
-                    if let SceneUpdateEvent { scene: Some(scene) } = event {
-                        self.update_scene(&scene).await;
-                    } else {
-                        debug!("received empty scene update event, ignoring");
-                    }
-                }
-                Event::SceneSwitch(event) => {
-                    info!("recieved: {:?}", event);
-                }
-            }
+            trace!("update: {:?}", update);
         }
     }
 
-    pub async fn update_scene(&mut self, scene: &Scene) {
+    pub async fn update_scene(&mut self, scene: &Scene) -> Result<(), Error> {
         if let Some(universe) = &scene.universe {
             let buffer = DmxBuffer::try_from(universe.clone());
             if let Ok(buffer) = buffer {
-                self.client.send_dmx(1, &buffer).await.unwrap();
+                self.client.send_dmx(1, &buffer).await?;
                 trace!("sent buffer to ola: {:?}", buffer);
             } else {
                 error!("scene event contained invalid universe buffer");
@@ -87,5 +85,7 @@ impl DmxStage {
         } else {
             debug!("recieved scene with no change, ignoring");
         }
+
+        Ok(())
     }
 }

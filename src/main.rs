@@ -1,7 +1,7 @@
 pub mod config;
 pub mod dmx;
-pub mod event;
 pub mod interface;
+pub mod mix;
 pub mod scene;
 pub mod shutdown;
 
@@ -18,8 +18,9 @@ use std::env::var;
 use std::process::exit;
 
 use config::Config;
-use dmx::DmxStage;
+use dmx::Dmx;
 use interface::Interface;
+use mix::Mixer;
 use scene::SceneGraph;
 
 use directories::ProjectDirs;
@@ -47,24 +48,26 @@ fn main() {
     build_runtime().block_on(async move {
         let mut shutdown = shutdown::Sender::new();
 
-        let scene = SceneGraph::from_config(&config);
+        let graph = match SceneGraph::from_config(&config) {
+            Ok(graph) => graph,
+            Err(e) => {
+                eprintln!("Error building scene graph\n{}", e);
+                exit(1);
+            }
+        };
+        let mixer = Mixer::new(graph, shutdown.subscribe());
 
-        println!("{:?}", scene);
-
-        let dmx = match DmxStage::new(shutdown.subscribe()).await {
+        let dmx = match Dmx::new(config.output, mixer.sender(), shutdown.subscribe()).await {
             Ok(dmx) => dmx,
             Err(e) => {
                 eprintln!("Error setting up DMX connections\n{}", e);
                 exit(1);
             }
         };
-        let interface = Interface::new(
-            config.interface,
-            dmx.sender(),
-            dmx.subscribe(),
-            shutdown.subscribe(),
-        );
 
+        let interface = Interface::new(config.interface, mixer.sender(), shutdown.subscribe());
+
+        tokio::spawn(mixer.serve().instrument(info_span!("mixer")));
         tokio::spawn(dmx.serve().instrument(info_span!("dmx")));
         tokio::spawn(interface.serve().instrument(info_span!("interface")));
 

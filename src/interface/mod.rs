@@ -1,7 +1,7 @@
 mod message;
 
 use crate::config::InterfaceConfig;
-use crate::event::Event;
+use crate::mix::event::Event;
 use crate::shutdown;
 use message::{next, Error as MessageError};
 
@@ -11,57 +11,36 @@ use axum::{
     routing::{get, Router},
     Server,
 };
-use tokio::sync::{
-    broadcast::{self, error::RecvError},
-    mpsc,
-};
+use tokio::sync::mpsc;
 use tower::ServiceBuilder;
 use tower_http::{
     trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
-use tracing::{error, info, warn, Level};
+use tracing::{error, info, Level};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Interface {
     config: InterfaceConfig,
-    event_tx: mpsc::Sender<Event>,
-    update_rx: broadcast::Receiver<Event>,
+    mixer_tx: mpsc::Sender<Event>,
     shutdown: shutdown::Receiver,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct ServerState {
-    event_tx: mpsc::Sender<Event>,
-    update_rx: broadcast::Receiver<Event>,
+    mixer_tx: mpsc::Sender<Event>,
     shutdown: shutdown::Receiver,
-}
-
-// this is technically an invalid implementation of Clone since
-// tokio::sync::broadcast is not Clone, but ServerState must be Clone for axum
-// to pass it around and Receiver::resubscribe() is close enough to a clone for
-// what we need
-impl Clone for ServerState {
-    fn clone(&self) -> Self {
-        Self {
-            event_tx: self.event_tx.clone(),
-            update_rx: self.update_rx.resubscribe(),
-            shutdown: self.shutdown.clone(),
-        }
-    }
 }
 
 impl Interface {
     pub fn new(
         config: InterfaceConfig,
-        event_tx: mpsc::Sender<Event>,
-        update_rx: broadcast::Receiver<Event>,
+        mixer_tx: mpsc::Sender<Event>,
         shutdown: shutdown::Receiver,
     ) -> Self {
         Self {
             config,
-            event_tx,
-            update_rx,
+            mixer_tx,
             shutdown,
         }
     }
@@ -69,8 +48,7 @@ impl Interface {
     pub async fn serve(mut self) {
         let routes = Router::new().route("/api/ws", get(ws_handler));
         let state = ServerState {
-            event_tx: self.event_tx,
-            update_rx: self.update_rx,
+            mixer_tx: self.mixer_tx,
             shutdown: self.shutdown.clone(),
         };
 
@@ -103,21 +81,32 @@ impl Interface {
 #[axum::debug_handler(state = ServerState)]
 async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) -> Response {
     ws.on_upgrade(|mut socket| async move {
+        let (tx, mut subscription) = mpsc::channel(100);
+        if state
+            .mixer_tx
+            .send(Event::Subscribe(
+                "6715a54c-f1bd-55ea-9963-dd0f138c59d6".parse().unwrap(),
+                tx,
+            ))
+            .await
+            .is_err()
+        {
+            error!("failed to subscribe to mixer");
+            state.shutdown.force_shutdown().await;
+            return;
+        }
+
         loop {
             tokio::select! {
                 message = next(&mut socket) => match message {
-                    Some(Ok(event)) => forward_event(event, &mut state.event_tx).await,
+                    Some(Ok(event)) => forward_event(event, &mut state.mixer_tx).await,
                     None | Some(Err(MessageError::Socket)) => return,
                     _ => continue,
                 },
-                update = state.update_rx.recv() => match update {
-                    Ok(event) => unimplemented!("received update event: {:?}", event),
-                    Err(RecvError::Lagged(n)) => {
-                        warn!("interface missed {} dmx updates", n);
-                        continue
-                    }
-                    Err(RecvError::Closed) => {
-                        error!("dmx task closed unexpectedly");
+                update = subscription.recv() => match update {
+                    Some(event) => info!("received updated universe: {:?}", event),
+                    None => {
+                        error!("mixer channel closed unexpectedly");
                         break
                     }
                 },
@@ -131,8 +120,8 @@ async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) 
     })
 }
 
-async fn forward_event(event: Event, event_tx: &mut mpsc::Sender<Event>) {
-    if event_tx.send(event).await.is_err() {
-        error!("dmx task while processing a request");
+async fn forward_event(event: Event, mixer_tx: &mut mpsc::Sender<Event>) {
+    if mixer_tx.send(event).await.is_err() {
+        error!("failed to send event to mixer");
     };
 }
