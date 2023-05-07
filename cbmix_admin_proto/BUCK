@@ -1,0 +1,28 @@
+rust_library(
+    name = "cbmix_admin_proto",
+    srcs = glob(["src/**/*.rs"]),
+    env = {
+        "OUT_DIR": "$(location :cbmix_admin_proto-build-script-run)",
+    },
+    deps = [
+        "//third-party:prost",
+        "//third-party:prost-types",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+rust_binary(
+    name = "cbmix_admin_proto-build-script-build",
+    srcs = ["build.rs"],
+    crate_root = "build.rs",
+    deps = [
+        "//third-party:prost-build",
+    ],
+)
+
+genrule(
+    name = "cbmix_admin_proto-build-script-run",
+    srcs = glob(["proto/**/*.proto"]),
+    out = ".",
+    cmd = "$(exe :cbmix_admin_proto-build-script-build)",
+)

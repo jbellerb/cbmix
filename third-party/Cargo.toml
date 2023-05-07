@@ -1,19 +1,27 @@
 [workspace]
-resolver = "2"
-members = [
-  "cbmix",
-  "cbmix_admin_proto",
-]
 
-[workspace.dependencies]
+[package]
+name = "cbmix-third-party"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+# dummy target to keep Cargo happy
+[[bin]]
+name = "top"
+path = "top/main.rs"
+
+[dependencies]
 axum = { version = "0.6", features = ["macros", "ws"] }
 bytes = "1.4"
 directories = "5.0"
-ola = { git = "https://github.com/jbellerb/libola-rs", features = ["tokio"] }
+# ola = { version = "0.1.0", features = ["tokio"] }
 petgraph = "0.6"
+proc-macro2 = "1"
 prost = "0.11"
 prost-build = "0.11"
 prost-types = "0.11"
+quote = "1"
 regex = "1.7"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
@@ -26,4 +34,5 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.3", features = ["v4", "v5"] }
 
-cbmix_admin_proto = { path = "cbmix_admin_proto" }
+# [patch.crates-io]
+# ola = { git = "https://github.com/jbellerb/libola-rs", rev = "c0278827660b4d11106fb019da3eb0a13d017e26", version = "0.1.0" }

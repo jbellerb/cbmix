@@ -5,14 +5,7 @@ pub mod mix;
 pub mod scene;
 pub mod shutdown;
 
-pub mod proto {
-    pub mod cbmix {
-        include!(concat!(env!("OUT_DIR"), "/cbmix.rs"));
-        pub mod message {
-            include!(concat!(env!("OUT_DIR"), "/cbmix.message.rs"));
-        }
-    }
-}
+pub use cbmix_admin_proto as proto;
 
 use std::env::var;
 use std::process::exit;
