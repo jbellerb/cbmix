@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use cbmix_common::shutdown;
 use cbmix_graph::GraphHandle;
-use ola::{connect_async, DmxBuffer, StreamingClientAsync};
+use ola::{client::StreamingClientAsync, connect_async, DmxBuffer};
 use thiserror::Error;
 use tokio::{net::TcpStream, sync::mpsc};
 use tracing::{error, trace, warn};
@@ -12,10 +12,12 @@ const OUTGOING_BUFFER_SIZE: usize = 15;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Underlying DMX error: {0}")]
-    Dmx(#[from] ola::Error),
-    #[error("Failed to subscribe to mixer")]
-    Mixer,
+    #[error("Failed to connect to DMX: {0}")]
+    DmxConnect(#[from] ola::config::ConnectError),
+    #[error("Failed to send DMX message: {0}")]
+    DmxCall(#[from] ola::client::CallError),
+    #[error("Failed to subscribe to graph")]
+    Graph,
 }
 
 pub struct Dmx {
@@ -50,7 +52,7 @@ impl Dmx {
         self.graph
             .subscribe(id, self.subscription.clone())
             .await
-            .map_err(|_| Error::Mixer)?;
+            .map_err(|_| Error::Graph)?;
 
         Ok(())
     }
