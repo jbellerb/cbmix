@@ -16,6 +16,7 @@ anyhow = "1.0"
 axum = { version = "0.6", features = ["macros", "ws"] }
 bytes = "1.4"
 directories = "5.0"
+generational-arena = "0.2"
 # ola = { version = "0.1.0", features = ["tokio"] }
 petgraph = "0.6"
 proc-macro2 = "1"

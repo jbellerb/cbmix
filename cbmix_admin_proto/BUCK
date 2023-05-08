@@ -6,6 +6,8 @@ rust_library(
     },
     deps = [
         "//third-party:prost",
+        "//third-party:thiserror",
+        "//third-party:uuid",
     ],
     visibility = ["PUBLIC"],
 )

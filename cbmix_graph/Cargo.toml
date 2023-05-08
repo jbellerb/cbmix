@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cbmix_admin_proto = { workspace = true }
 cbmix_common = { workspace = true }
 
+generational-arena = { workspace = true }
 ola = { workspace = true }
 petgraph = { workspace = true }
 thiserror = { workspace = true }

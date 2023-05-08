@@ -5,8 +5,10 @@ use std::collections::{
 use std::iter::Copied;
 use std::slice::Iter;
 
+use generational_arena::Arena;
 use ola::DmxBuffer;
 use petgraph::{
+    data::DataMap,
     visit::{
         Data, GraphBase, IntoNeighbors, IntoNeighborsDirected, IntoNodeIdentifiers, NodeCount,
         Visitable,
@@ -15,7 +17,6 @@ use petgraph::{
 };
 use thiserror::Error;
 use tokio::sync::mpsc;
-use tracing::trace;
 use uuid::Uuid;
 
 #[derive(Error, Debug)]
@@ -26,6 +27,8 @@ pub enum Error {
     Subscribe(Uuid),
     #[error("Node already present with id {0}")]
     Insert(Uuid),
+    #[error("No node found with id {0}")]
+    Remove(Uuid),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -46,26 +49,58 @@ impl SceneGraph {
         }
     }
 
-    pub fn subscribe(&mut self, output: &Uuid, tx: mpsc::Sender<DmxBuffer>) -> Result<(), Error> {
-        if let Some(Node::Output { subscribers, .. }) = self.0.get_mut(output) {
-            trace!("registering new subscriber with output {}", output);
-            subscribers.push(tx);
+    pub fn remove(&mut self, id: Uuid) -> Result<(), Error> {
+        if let Some(node) = self.0.remove(&id) {
+            match node {
+                Node::Input { outputs, .. } => {
+                    for output in outputs {
+                        if let Some(Node::Output { input, .. }) = self.0.get_mut(&output) {
+                            if *input == Some(id) {
+                                *input = None;
+                            }
+                        }
+                    }
+                }
+                Node::Output { input, .. } => {
+                    if let Some(input) = input {
+                        if let Some(Node::Input { outputs, .. }) = self.0.get_mut(&input) {
+                            if let Some(pos) = outputs.iter().position(|x| x == &id) {
+                                outputs.swap_remove(pos);
+                            }
+                        }
+                    }
+                }
+            }
 
             Ok(())
         } else {
-            Err(Error::Subscribe(*output))
+            Err(Error::Remove(id))
         }
+    }
+
+    pub fn node_weight_mut(&mut self, id: Uuid) -> Option<&mut Node> {
+        self.0.get_mut(&id)
     }
 }
 
 impl GraphBase for SceneGraph {
     type NodeId = Uuid;
-    type EdgeId = (Uuid, Uuid);
+    type EdgeId = ();
 }
 
 impl Data for SceneGraph {
     type NodeWeight = Node;
     type EdgeWeight = ();
+}
+
+impl DataMap for SceneGraph {
+    fn node_weight(&self, id: Self::NodeId) -> Option<&Self::NodeWeight> {
+        self.0.get(&id)
+    }
+
+    fn edge_weight(&self, _id: Self::EdgeId) -> Option<&Self::EdgeWeight> {
+        Some(&())
+    }
 }
 
 impl NodeCount for SceneGraph {
@@ -126,17 +161,17 @@ pub enum Node {
         channels: DmxBuffer,
     },
     Output {
-        input: Uuid,
-        subscribers: Vec<mpsc::Sender<DmxBuffer>>,
+        input: Option<Uuid>,
+        subscribers: Arena<mpsc::Sender<(Uuid, DmxBuffer)>>,
     },
 }
 
 impl<'a> Node {
-    fn get(&'a self, i: usize) -> Option<Uuid> {
+    fn get_incoming(&'a self, i: usize) -> Option<Uuid> {
         match self {
             Node::Input { .. } => None,
             Node::Output { input, .. } => match i {
-                0 => Some(*input),
+                0 => *input,
                 _ => None,
             },
         }
@@ -145,7 +180,13 @@ impl<'a> Node {
     fn incoming_size_hint(&'a self) -> (usize, Option<usize>) {
         match self {
             Node::Input { .. } => (0, Some(0)),
-            Node::Output { .. } => (1, Some(1)),
+            Node::Output { input, .. } => {
+                if input.is_some() {
+                    (1, Some(1))
+                } else {
+                    (0, Some(0))
+                }
+            }
         }
     }
 }
@@ -227,7 +268,7 @@ impl<'a> Iterator for NeighborsDirected<'a> {
                 0 => None,
                 _ => {
                     *index -= 1;
-                    node.get(*index)
+                    node.get_incoming(*index)
                 }
             },
         }

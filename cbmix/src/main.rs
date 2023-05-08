@@ -9,12 +9,11 @@ use anyhow::Error;
 use cbmix_admin::Admin;
 use cbmix_common::shutdown;
 use cbmix_dmx::Dmx;
-use cbmix_graph::{Event, Graph};
+use cbmix_graph::{Graph, GraphHandle};
 use directories::ProjectDirs;
 use tokio::{
     runtime::Runtime,
     signal::unix::{signal, SignalKind},
-    sync::{mpsc, oneshot},
     time::timeout,
 };
 use tracing::{debug, error, info, info_span, instrument::Instrument, warn};
@@ -38,7 +37,7 @@ fn main() {
 
         let graph = Graph::new(shutdown.subscribe());
 
-        let mut dmx = match Dmx::new(graph.sender(), shutdown.subscribe()).await {
+        let mut dmx = match Dmx::new(graph.handle(), shutdown.subscribe()).await {
             Ok(dmx) => dmx,
             Err(e) => {
                 eprintln!("Error setting up DMX connections\n{}", e);
@@ -46,13 +45,13 @@ fn main() {
             }
         };
 
-        let admin = Admin::new(config.admin.clone(), graph.sender(), shutdown.subscribe());
+        let admin = Admin::new(config.admin.clone(), graph.handle(), shutdown.subscribe());
 
-        let init_sender = graph.sender();
+        let init_handle = graph.handle();
 
         tokio::spawn(graph.serve().instrument(info_span!("graph")));
 
-        if register_nodes(&config, init_sender, &mut dmx).await.is_ok() {
+        if register_nodes(&config, init_handle, &mut dmx).await.is_ok() {
             tokio::spawn(dmx.serve().instrument(info_span!("dmx")));
             tokio::spawn(admin.serve().instrument(info_span!("admin")));
         } else {
@@ -95,19 +94,11 @@ async fn unix_signal(kind: SignalKind) {
         .await;
 }
 
-async fn register_nodes(
-    config: &Config,
-    graph: mpsc::Sender<Event>,
-    dmx: &mut Dmx,
-) -> Result<(), Error> {
+async fn register_nodes(config: &Config, graph: GraphHandle, dmx: &mut Dmx) -> Result<(), Error> {
     for (id, input) in &config.input {
         match input {
             InputConfig::Static { channels, .. } => {
-                let (tx, rx) = oneshot::channel();
-                graph
-                    .send(Event::CreateInput(*id, channels.clone(), tx))
-                    .await?;
-                rx.await??;
+                graph.create_input(*id, channels.clone()).await?;
             }
         }
     }
@@ -115,9 +106,7 @@ async fn register_nodes(
     for (id, output) in &config.output {
         match output {
             OutputConfig::Sacn { universe, from } => {
-                let (tx, rx) = oneshot::channel();
-                graph.send(Event::CreateOutput(*id, *from, tx)).await?;
-                rx.await??;
+                graph.create_output(*id, *from).await?;
 
                 dmx.add_universe(*universe, *id).await?;
             }

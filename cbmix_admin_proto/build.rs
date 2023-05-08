@@ -7,7 +7,7 @@ fn main() -> Result<()> {
         .out_dir(var("OUT").or(var("OUT_DIR")).unwrap())
         .compile_protos(
             &[
-                "proto/cbmix/control.proto",
+                "proto/cbmix/graph.proto",
                 "proto/cbmix/message/message.proto",
             ],
             &["proto/"],

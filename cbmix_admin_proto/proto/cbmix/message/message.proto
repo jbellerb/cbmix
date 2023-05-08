@@ -23,7 +23,7 @@ message Message {
   // An unsigned integer representing which request a response is associated
   // with. These should be generated sequentially to minimize the chance of a
   // collision.
-  optional uint32 id = 2;
+  optional uint32 seq = 2;
   // The name of the event or RPC function the message is associated with.
   optional string name = 3;
   // Protobuf-encoded message of the appropriate type for the event or method.

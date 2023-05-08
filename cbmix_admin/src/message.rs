@@ -1,9 +1,8 @@
 use axum::extract::ws::{Message as WsMessage, WebSocket};
 use cbmix_admin_proto::{
-    message::Message,
-    {SceneId, SceneUpdateEvent},
+    message::{Message, MessageType},
+    GraphServiceRequest, GraphServiceResponse,
 };
-use cbmix_graph::Event;
 use prost::Message as MessageTrait;
 use thiserror::Error;
 use tracing::{error, info, warn};
@@ -12,50 +11,15 @@ use tracing::{error, info, warn};
 pub enum Error {
     #[error("Underlying WebSocket error")]
     Socket,
-    #[error("Recieved unexpected WebSocket message")]
+    #[error("Received unexpected WebSocket message")]
     UnexpectedMessage,
     #[error("Unable to decode protobuf message")]
     Decode,
-    #[error("Recieved unexpected message type")]
-    UnexpectedType,
-    #[error("Recieved unknown event type")]
-    UnknownEvent,
-    #[error("Recieved incomplete event")]
-    IncompleteEvent,
 }
 
-fn message_event(value: Message) -> Result<Event, Error> {
-    // if value.r#type() != MessageType::Event {
-    //     error!("recieved message of type {}", value.r#type);
-    //     return Err(Error::UnexpectedType);
-    // }
-
-    if let (Some(name), Some(body)) = (value.name, value.body) {
-        match name.as_str() {
-            "SceneUpdate" => Ok(Event::SceneUpdate(
-                SceneUpdateEvent::decode(&*body).map_err(|e| {
-                    error!("error parsing scene update event: {}", e);
-                    Error::Decode
-                })?,
-            )),
-            "SetCurrentScene" => Ok(Event::SceneSwitch(SceneId::decode(&*body).map_err(
-                |e| {
-                    error!("error parsing scene update event: {}", e);
-                    Error::Decode
-                },
-            )?)),
-            _ => {
-                error!("recieved unknown \"{}\" event", name);
-                Err(Error::UnknownEvent)
-            }
-        }
-    } else {
-        error!("recieved incomplete event");
-        Err(Error::IncompleteEvent)
-    }
-}
-
-pub(super) async fn next(socket: &mut WebSocket) -> Option<Result<Event, Error>> {
+pub(super) async fn next(
+    socket: &mut WebSocket,
+) -> Option<Result<(u32, GraphServiceRequest), Error>> {
     match socket.recv().await {
         Some(Ok(msg)) => match msg {
             WsMessage::Binary(raw) => {
@@ -65,7 +29,10 @@ pub(super) async fn next(socket: &mut WebSocket) -> Option<Result<Event, Error>>
                 });
 
                 match message {
-                    Ok(m) => Some(message_event(m)),
+                    Ok(m) => Some(Message::get_request(&m).map_err(|e| {
+                        error!("error reading message: {}", e);
+                        Error::Decode
+                    })),
                     Err(e) => Some(Err(e)),
                 }
             }
@@ -83,4 +50,28 @@ pub(super) async fn next(socket: &mut WebSocket) -> Option<Result<Event, Error>>
             None
         }
     }
+}
+
+pub(super) async fn send(
+    socket: &mut WebSocket,
+    seq: u32,
+    response: Result<GraphServiceResponse, crate::Error>,
+) -> Result<(), Error> {
+    let message = match response {
+        Ok(res) => res.to_message(seq),
+        Err(e) => Message {
+            r#type: MessageType::ResponseError as i32,
+            seq: Some(seq),
+            name: None,
+            body: Some(e.to_string().into_bytes()),
+        },
+    };
+
+    socket
+        .send(WsMessage::Binary(message.encode_to_vec()))
+        .await
+        .map_err(|e| {
+            error!("websocket error: {}", e);
+            Error::Socket
+        })
 }

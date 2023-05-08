@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package cbmix;
+
+// A UUID representing a graph node.
+message NodeId {
+  string id = 1;
+}
+
+// The parameters of an output node.
+message OutputNode {
+  // The id of the node to output.
+  string input = 1;
+}
+
+// The parameters of an input node.
+message InputNode {
+  // The DMX universe bytes to assign to a static input.
+  bytes channels = 1;
+}
+
+// A node describing either an input, output, or function to the scene graph.
+message Node {
+  // The id of the node.
+  optional string id = 1;
+  // The description of the node.
+  oneof body {
+    // An output node.
+    OutputNode output = 3;
+    // An input node.
+    InputNode input = 4;
+  }
+}
+
+// A collection of graph nodes.
+message Nodes {
+  // The nodes.
+  repeated Node nodes = 1;
+}

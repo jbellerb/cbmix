@@ -328,6 +328,23 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "cfg-if-0.1.10.crate",
+    sha256 = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822",
+    strip_prefix = "cfg-if-0.1.10",
+    urls = ["https://crates.io/api/v1/crates/cfg-if/0.1.10/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "cfg-if-0.1.10",
+    srcs = [":cfg-if-0.1.10.crate"],
+    crate = "cfg_if",
+    crate_root = "cfg-if-0.1.10.crate/src/lib.rs",
+    edition = "2018",
+    visibility = [],
+)
+
+http_archive(
     name = "cfg-if-1.0.0.crate",
     sha256 = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd",
     strip_prefix = "cfg-if-1.0.0",
@@ -725,6 +742,34 @@ cargo.rust_library(
         ":pin-utils-0.1.0",
         ":slab-0.4.8",
     ],
+)
+
+alias(
+    name = "generational-arena",
+    actual = ":generational-arena-0.2.8",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "generational-arena-0.2.8.crate",
+    sha256 = "8e1d3b771574f62d0548cee0ad9057857e9fc25d7a3335f140c84f6acd0bf601",
+    strip_prefix = "generational-arena-0.2.8",
+    urls = ["https://crates.io/api/v1/crates/generational-arena/0.2.8/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "generational-arena-0.2.8",
+    srcs = [":generational-arena-0.2.8.crate"],
+    crate = "generational_arena",
+    crate_root = "generational-arena-0.2.8.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "default",
+        "std",
+    ],
+    visibility = [],
+    deps = [":cfg-if-0.1.10"],
 )
 
 http_archive(

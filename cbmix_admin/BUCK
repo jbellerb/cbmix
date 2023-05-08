@@ -6,6 +6,7 @@ rust_library(
         "//cbmix_common:cbmix_common",
         "//cbmix_graph:cbmix_graph",
         "//third-party:axum",
+        "//third-party:ola",
         "//third-party:prost",
         "//third-party:serde",
         "//third-party:thiserror",
@@ -13,6 +14,7 @@ rust_library(
         "//third-party:tower",
         "//third-party:tower-http",
         "//third-party:tracing",
+        "//third-party:uuid",
     ],
     visibility = ["PUBLIC"],
 )

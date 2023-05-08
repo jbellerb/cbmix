@@ -9,6 +9,7 @@ cbmix_common = { workspace = true }
 cbmix_graph = { workspace = true }
 
 axum = { workspace = true }
+ola = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
@@ -16,3 +17,4 @@ tokio = { workspace = true }
 tower =  { workspace = true }
 tower-http =  { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
