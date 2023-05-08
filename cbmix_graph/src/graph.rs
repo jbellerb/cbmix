@@ -1,8 +1,9 @@
-use std::collections::{hash_map::Keys, HashMap, HashSet};
+use std::collections::{
+    hash_map::{Entry, Keys},
+    HashMap, HashSet,
+};
 use std::iter::Copied;
 use std::slice::Iter;
-
-use crate::config::{Config, InputConfig, OutputConfig};
 
 use ola::DmxBuffer;
 use petgraph::{
@@ -17,15 +18,14 @@ use tokio::sync::mpsc;
 use tracing::trace;
 use uuid::Uuid;
 
-// UUID namespace ID for scene graph nodes
-pub const NAMESPACE_SCENE: Uuid = Uuid::from_u128(0x57e02364b4e34787ae21bf4dde8dbdef);
-
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Node is not an input")]
     Input,
     #[error("No output with id {0}")]
     Subscribe(Uuid),
+    #[error("Node already present with id {0}")]
+    Insert(Uuid),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -36,27 +36,14 @@ impl SceneGraph {
         Default::default()
     }
 
-    pub fn from_config(config: &Config) -> Result<Self, Error> {
-        let mut map = HashMap::new();
+    pub fn insert(&mut self, id: Uuid, node: Node) -> Result<(), Error> {
+        if let Entry::Vacant(n) = self.0.entry(id) {
+            let _ = n.insert(node);
 
-        for (key, value) in config.input.iter() {
-            map.insert(*key, Node::from_input(value));
+            Ok(())
+        } else {
+            Err(Error::Insert(id))
         }
-
-        for (key, value) in config.output.iter() {
-            map.insert(*key, Node::from_output(value));
-            let input = match value {
-                OutputConfig::Sacn { from, .. } => from,
-            };
-
-            if let Some(Node::Input { outputs, .. }) = map.get_mut(input) {
-                outputs.push(*key);
-            } else {
-                return Err(Error::Input);
-            }
-        }
-
-        Ok(Self(map))
     }
 
     pub fn subscribe(&mut self, output: &Uuid, tx: mpsc::Sender<DmxBuffer>) -> Result<(), Error> {
@@ -142,26 +129,6 @@ pub enum Node {
         input: Uuid,
         subscribers: Vec<mpsc::Sender<DmxBuffer>>,
     },
-}
-
-impl Node {
-    fn from_input(input: &InputConfig) -> Self {
-        Node::Input {
-            outputs: Vec::new(),
-            channels: match input {
-                InputConfig::Static { channels, .. } => channels.clone(),
-            },
-        }
-    }
-
-    fn from_output(output: &OutputConfig) -> Self {
-        Node::Output {
-            input: match output {
-                OutputConfig::Sacn { from, .. } => *from,
-            },
-            subscribers: Vec::new(),
-        }
-    }
 }
 
 impl<'a> Node {

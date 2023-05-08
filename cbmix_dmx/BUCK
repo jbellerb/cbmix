@@ -1,0 +1,15 @@
+rust_library(
+    name = "cbmix_dmx",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//cbmix_admin_proto:cbmix_admin_proto",
+        "//cbmix_common:cbmix_common",
+        "//cbmix_graph:cbmix_graph",
+        "//third-party:ola",
+        "//third-party:thiserror",
+        "//third-party:tokio",
+        "//third-party:tracing",
+        "//third-party:uuid",
+    ],
+    visibility = ["PUBLIC"],
+)

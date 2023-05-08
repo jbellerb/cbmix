@@ -1,83 +1,21 @@
-load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")
-
 rust_binary(
     name = "cbmix-bin",
     srcs = glob(["src/**/*.rs"]),
     deps = [
-        "//cbmix_admin_proto:cbmix_admin_proto",
-        "//third-party:axum",
-        "//third-party:bytes",
+        "//cbmix_admin:cbmix_admin",
+        "//cbmix_common:cbmix_common",
+        "//cbmix_dmx:cbmix_dmx",
+        "//cbmix_graph:cbmix_graph",
+        "//third-party:anyhow",
         "//third-party:directories",
-        ":ola",
-        "//third-party:petgraph",
-        "//third-party:prost",
-        "//third-party:prost-types",
+        "//third-party:ola",
         "//third-party:regex",
         "//third-party:serde",
         "//third-party:thiserror",
         "//third-party:tokio",
-        "//third-party:tokio-util",
         "//third-party:toml",
-        "//third-party:tower",
-        "//third-party:tower-http",
         "//third-party:tracing",
         "//third-party:tracing-subscriber",
         "//third-party:uuid",
     ],
-)
-
-# temporary until `ola` 0.2.0 is released
-
-filegroup(
-    name = "ola-0.1.0.crate",
-    srcs = { path.removeprefix("ola/"): path for path in glob(["ola/**"]) },
-    copy = False,
-)
-
-rust_library(
-    name = "ola",
-    srcs = [":ola-0.1.0.crate"],
-    crate_root = "ola-0.1.0.crate/src/lib.rs",
-    edition = "2021",
-    env = {
-        "OUT_DIR": "$(location :ola-0.1.0-build-script-run[out_dir])",
-    },
-    features = [
-        "default",
-        "tokio",
-    ],
-    deps = [
-        "//third-party:bytes",
-        "//third-party:prost",
-        "//third-party:thiserror",
-        "//third-party:tokio",
-    ],
-)
-
-rust_binary(
-    name = "ola-0.1.0-build-script-build",
-    srcs = [":ola-0.1.0.crate"],
-    crate = "build_script_build",
-    crate_root = "ola-0.1.0.crate/build.rs",
-    edition = "2021",
-    features = [
-        "default",
-        "tokio",
-    ],
-    deps = [
-        "//third-party:proc-macro2",
-        "//third-party:prost-build",
-        "//third-party:quote",
-    ],
-)
-
-buildscript_run(
-    name = "ola-0.1.0-build-script-run",
-    package_name = "ola",
-    buildscript_rule = ":ola-0.1.0-build-script-build",
-    features = [
-        "default",
-        "tokio",
-    ],
-    version = "0.1.0",
 )

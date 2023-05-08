@@ -1,8 +1,9 @@
-use crate::mix::event::Event;
-use crate::proto::cbmix::message::{Message, MessageType};
-use crate::proto::cbmix::{SceneId, SceneUpdateEvent};
-
 use axum::extract::ws::{Message as WsMessage, WebSocket};
+use cbmix_admin_proto::{
+    message::Message,
+    {SceneId, SceneUpdateEvent},
+};
+use cbmix_graph::Event;
 use prost::Message as MessageTrait;
 use thiserror::Error;
 use tracing::{error, info, warn};

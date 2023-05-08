@@ -1,6 +1,6 @@
 [submodule "prelude"]
 	path = prelude
 	url = https://github.com/facebook/buck2-prelude.git
-[submodule "cbmix/ola"]
-	path = cbmix/ola
+[submodule "third-party/vendor/ola"]
+	path = third-party/vendor/ola
 	url = https://github.com/jbellerb/libola-rs.git

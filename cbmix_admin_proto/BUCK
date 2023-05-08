@@ -6,7 +6,6 @@ rust_library(
     },
     deps = [
         "//third-party:prost",
-        "//third-party:prost-types",
     ],
     visibility = ["PUBLIC"],
 )

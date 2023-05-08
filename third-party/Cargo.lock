@@ -142,6 +142,7 @@ checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 name = "cbmix-third-party"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "axum",
  "bytes",
  "directories",
@@ -149,13 +150,11 @@ dependencies = [
  "proc-macro2",
  "prost",
  "prost-build",
- "prost-types",
  "quote",
  "regex",
  "serde",
  "thiserror",
  "tokio",
- "tokio-util",
  "toml",
  "tower",
  "tower-http",
@@ -1139,20 +1138,6 @@ dependencies = [
  "log",
  "tokio",
  "tungstenite",
-]
-
-[[package]]
-name = "tokio-util"
-version = "0.7.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "806fe8c2c87eccc8b3267cbae29ed3ab2d0bd37fca70ab622e46aaa9375ddb7d"
-dependencies = [
- "bytes",
- "futures-core",
- "futures-sink",
- "pin-project-lite",
- "tokio",
- "tracing",
 ]
 
 [[package]]

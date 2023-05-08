@@ -1,8 +1,7 @@
+pub mod config;
 mod message;
 
-use crate::config::InterfaceConfig;
-use crate::mix::event::Event;
-use crate::shutdown;
+use config::AdminConfig;
 use message::{next, Error as MessageError};
 
 use axum::{
@@ -11,6 +10,8 @@ use axum::{
     routing::{get, Router},
     Server,
 };
+use cbmix_common::shutdown;
+use cbmix_graph::Event;
 use tokio::sync::mpsc;
 use tower::ServiceBuilder;
 use tower_http::{
@@ -20,8 +21,8 @@ use tower_http::{
 use tracing::{error, info, Level};
 
 #[derive(Clone, Debug)]
-pub struct Interface {
-    config: InterfaceConfig,
+pub struct Admin {
+    config: AdminConfig,
     mixer_tx: mpsc::Sender<Event>,
     shutdown: shutdown::Receiver,
 }
@@ -32,9 +33,9 @@ struct ServerState {
     shutdown: shutdown::Receiver,
 }
 
-impl Interface {
+impl Admin {
     pub fn new(
-        config: InterfaceConfig,
+        config: AdminConfig,
         mixer_tx: mpsc::Sender<Event>,
         shutdown: shutdown::Receiver,
     ) -> Self {

@@ -1,11 +1,10 @@
 use std::collections::BTreeMap;
 use std::fs::read_to_string;
-use std::net::SocketAddr;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::scene::NAMESPACE_SCENE;
-
+use cbmix_admin::config::AdminConfig;
+use cbmix_graph::NAMESPACE_SCENE;
 use ola::DmxBuffer;
 use regex::Regex;
 use serde::{
@@ -14,8 +13,6 @@ use serde::{
 };
 use thiserror::Error;
 use uuid::Uuid;
-
-pub const DEFAULT_LISTEN_ADDR: &str = "[::0]:8080";
 
 pub const DEFAULT_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(30);
 
@@ -29,7 +26,7 @@ pub enum Error {
 #[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default)]
-    pub interface: InterfaceConfig,
+    pub admin: AdminConfig,
 
     #[serde(default, deserialize_with = "deserialize_ident_map")]
     pub input: BTreeMap<Uuid, InputConfig>,
@@ -42,13 +39,6 @@ pub struct Config {
         deserialize_with = "deserialize_duration"
     )]
     pub shutdown_grace_period: Duration,
-}
-
-#[derive(Deserialize, Clone, Debug)]
-#[serde(deny_unknown_fields)]
-pub struct InterfaceConfig {
-    #[serde(default = "default_listen_addr")]
-    pub listen_addr: SocketAddr,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -85,24 +75,12 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            interface: Default::default(),
+            admin: Default::default(),
             input: Default::default(),
             output: Default::default(),
             shutdown_grace_period: default_shutdown_grace_period(),
         }
     }
-}
-
-impl Default for InterfaceConfig {
-    fn default() -> Self {
-        Self {
-            listen_addr: default_listen_addr(),
-        }
-    }
-}
-
-fn default_listen_addr() -> SocketAddr {
-    DEFAULT_LISTEN_ADDR.parse().unwrap()
 }
 
 fn default_shutdown_grace_period() -> Duration {

@@ -2,23 +2,25 @@
 resolver = "2"
 members = [
   "cbmix",
+  "cbmix_admin",
   "cbmix_admin_proto",
+  "cbmix_common",
+  "cbmix_dmx",
+  "cbmix_graph",
 ]
 
 [workspace.dependencies]
+anyhow = "1.0"
 axum = { version = "0.6", features = ["macros", "ws"] }
-bytes = "1.4"
 directories = "5.0"
 ola = { git = "https://github.com/jbellerb/libola-rs", features = ["tokio"] }
 petgraph = "0.6"
 prost = "0.11"
 prost-build = "0.11"
-prost-types = "0.11"
 regex = "1.7"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
 tokio = { version = "1.26", features = ["full"] }
-tokio-util = { version = "0.7", features = ["codec"] }
 toml = "0.7"
 tower = "0.4"
 tower-http = { version = "0.4", features = ["trace"] }
@@ -26,4 +28,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.3", features = ["v4", "v5"] }
 
+cbmix_admin = { path = "cbmix_admin" }
 cbmix_admin_proto = { path = "cbmix_admin_proto" }
+cbmix_common = { path = "cbmix_common" }
+cbmix_dmx = { path = "cbmix_dmx" }
+cbmix_graph = { path = "cbmix_graph" }

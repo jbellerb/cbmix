@@ -1,10 +1,8 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
-use crate::config::OutputConfig;
-use crate::mix::event::Event;
-use crate::proto::cbmix::{Scene, SceneUpdateEvent};
-use crate::shutdown;
-
+use cbmix_admin_proto::Scene;
+use cbmix_common::shutdown;
+use cbmix_graph::Event;
 use ola::{connect_async, DmxBuffer, StreamingClientAsync};
 use thiserror::Error;
 use tokio::{net::TcpStream, sync::mpsc};
@@ -24,6 +22,7 @@ pub enum Error {
 pub struct Dmx {
     client: StreamingClientAsync<TcpStream>,
     mixer_tx: mpsc::Sender<Event>,
+    subscription: mpsc::Sender<DmxBuffer>,
     mixer_rx: mpsc::Receiver<DmxBuffer>,
     universes: HashMap<Uuid, u32>,
     shutdown: shutdown::Receiver,
@@ -31,32 +30,33 @@ pub struct Dmx {
 
 impl Dmx {
     pub async fn new(
-        config: BTreeMap<Uuid, OutputConfig>,
         mixer_tx: mpsc::Sender<Event>,
         shutdown: shutdown::Receiver,
     ) -> Result<Self, Error> {
         let (subscription, mixer_rx) = mpsc::channel(OUTGOING_BUFFER_SIZE);
-        let mut universes = HashMap::new();
-
-        for (id, output) in config.iter() {
-            if let OutputConfig::Sacn { universe, .. } = output {
-                universes.insert(*id, *universe);
-                mixer_tx
-                    .send(Event::Subscribe(*id, subscription.clone()))
-                    .await
-                    .map_err(|_| Error::Mixer)?;
-            }
-        }
+        let universes = HashMap::new();
 
         let client = connect_async().await?;
 
         Ok(Self {
             client,
+            subscription,
             mixer_tx,
             mixer_rx,
             universes,
             shutdown,
         })
+    }
+
+    pub async fn add_universe(&mut self, universe: u32, id: Uuid) -> Result<(), Error> {
+        self.universes.insert(id, universe);
+
+        self.mixer_tx
+            .send(Event::Subscribe(id, self.subscription.clone()))
+            .await
+            .map_err(|_| Error::Mixer)?;
+
+        Ok(())
     }
 
     pub async fn serve(mut self) {

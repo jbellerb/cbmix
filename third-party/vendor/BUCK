@@ -1,0 +1,59 @@
+load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")
+
+# temporary until `ola` 0.2.0 is released
+
+filegroup(
+    name = "ola-0.1.0.crate",
+    srcs = { path.removeprefix("ola/"): path for path in glob(["ola/**"]) },
+    copy = False,
+)
+
+rust_library(
+    name = "ola-0.1.0",
+    srcs = [":ola-0.1.0.crate"],
+    crate = "ola",
+    crate_root = "ola-0.1.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "OUT_DIR": "$(location :ola-0.1.0-build-script-run[out_dir])",
+    },
+    features = [
+        "default",
+        "tokio",
+    ],
+    deps = [
+        "//third-party:bytes",
+        "//third-party:prost",
+        "//third-party:thiserror",
+        "//third-party:tokio",
+    ],
+    visibility = ["//third-party:ola"],
+)
+
+rust_binary(
+    name = "ola-0.1.0-build-script-build",
+    srcs = [":ola-0.1.0.crate"],
+    crate = "build_script_build",
+    crate_root = "ola-0.1.0.crate/build.rs",
+    edition = "2021",
+    features = [
+        "default",
+        "tokio",
+    ],
+    deps = [
+        "//third-party:proc-macro2",
+        "//third-party:prost-build",
+        "//third-party:quote",
+    ],
+)
+
+buildscript_run(
+    name = "ola-0.1.0-build-script-run",
+    package_name = "ola",
+    buildscript_rule = ":ola-0.1.0-build-script-build",
+    features = [
+        "default",
+        "tokio",
+    ],
+    version = "0.1.0",
+)

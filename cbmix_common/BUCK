@@ -1,0 +1,8 @@
+rust_library(
+    name = "cbmix_common",
+    srcs = glob(["src/**/*.rs"]),
+    deps = [
+        "//third-party:tokio",
+    ],
+    visibility = ["PUBLIC"],
+)

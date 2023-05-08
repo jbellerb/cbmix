@@ -1,22 +1,15 @@
 [package]
-name = "cbmix"
+name = "cbmix_dmx"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cbmix_admin = { workspace = true }
+cbmix_admin_proto = { workspace = true }
 cbmix_common = { workspace = true }
-cbmix_dmx = { workspace = true }
 cbmix_graph = { workspace = true }
 
-anyhow = { workspace = true }
-directories = { workspace = true }
 ola = { workspace = true }
-regex = { workspace = true }
-serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-toml = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 uuid = { workspace = true }

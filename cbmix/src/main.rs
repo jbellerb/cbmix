@@ -1,25 +1,20 @@
 pub mod config;
-pub mod dmx;
-pub mod interface;
-pub mod mix;
-pub mod scene;
-pub mod shutdown;
-
-pub use cbmix_admin_proto as proto;
 
 use std::env::var;
 use std::process::exit;
 
-use config::Config;
-use dmx::Dmx;
-use interface::Interface;
-use mix::Mixer;
-use scene::SceneGraph;
+use config::{Config, InputConfig, OutputConfig};
 
+use anyhow::Error;
+use cbmix_admin::Admin;
+use cbmix_common::shutdown;
+use cbmix_dmx::Dmx;
+use cbmix_graph::{Event, Graph};
 use directories::ProjectDirs;
 use tokio::{
     runtime::Runtime,
     signal::unix::{signal, SignalKind},
+    sync::{mpsc, oneshot},
     time::timeout,
 };
 use tracing::{debug, error, info, info_span, instrument::Instrument, warn};
@@ -41,16 +36,9 @@ fn main() {
     build_runtime().block_on(async move {
         let mut shutdown = shutdown::Sender::new();
 
-        let graph = match SceneGraph::from_config(&config) {
-            Ok(graph) => graph,
-            Err(e) => {
-                eprintln!("Error building scene graph\n{}", e);
-                exit(1);
-            }
-        };
-        let mixer = Mixer::new(graph, shutdown.subscribe());
+        let graph = Graph::new(shutdown.subscribe());
 
-        let dmx = match Dmx::new(config.output, mixer.sender(), shutdown.subscribe()).await {
+        let mut dmx = match Dmx::new(graph.sender(), shutdown.subscribe()).await {
             Ok(dmx) => dmx,
             Err(e) => {
                 eprintln!("Error setting up DMX connections\n{}", e);
@@ -58,11 +46,18 @@ fn main() {
             }
         };
 
-        let interface = Interface::new(config.interface, mixer.sender(), shutdown.subscribe());
+        let admin = Admin::new(config.admin.clone(), graph.sender(), shutdown.subscribe());
 
-        tokio::spawn(mixer.serve().instrument(info_span!("mixer")));
-        tokio::spawn(dmx.serve().instrument(info_span!("dmx")));
-        tokio::spawn(interface.serve().instrument(info_span!("interface")));
+        let init_sender = graph.sender();
+
+        tokio::spawn(graph.serve().instrument(info_span!("graph")));
+
+        if register_nodes(&config, init_sender, &mut dmx).await.is_ok() {
+            tokio::spawn(dmx.serve().instrument(info_span!("dmx")));
+            tokio::spawn(admin.serve().instrument(info_span!("admin")));
+        } else {
+            shutdown.subscribe().force_shutdown().await;
+        }
 
         tokio::select! {
             _ = unix_signal(SignalKind::interrupt()) => {
@@ -98,4 +93,36 @@ async fn unix_signal(kind: SignalKind) {
         .expect("register a unix signal handler")
         .recv()
         .await;
+}
+
+async fn register_nodes(
+    config: &Config,
+    graph: mpsc::Sender<Event>,
+    dmx: &mut Dmx,
+) -> Result<(), Error> {
+    for (id, input) in &config.input {
+        match input {
+            InputConfig::Static { channels, .. } => {
+                let (tx, rx) = oneshot::channel();
+                graph
+                    .send(Event::CreateInput(*id, channels.clone(), tx))
+                    .await?;
+                rx.await??;
+            }
+        }
+    }
+
+    for (id, output) in &config.output {
+        match output {
+            OutputConfig::Sacn { universe, from } => {
+                let (tx, rx) = oneshot::channel();
+                graph.send(Event::CreateOutput(*id, *from, tx)).await?;
+                rx.await??;
+
+                dmx.add_universe(*universe, *id).await?;
+            }
+        }
+    }
+
+    Ok(())
 }
