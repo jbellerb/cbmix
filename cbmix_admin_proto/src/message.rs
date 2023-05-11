@@ -1,4 +1,4 @@
-use crate::{Error, GraphServiceRequest, Node, NodeId};
+use crate::{node::Body, Error, GraphServiceRequest, Node, NodeId};
 
 use prost::Message as MessageTrait;
 use uuid::Uuid;
@@ -32,13 +32,12 @@ impl Message {
                     )?),
                 )),
                 "GetNodes" => Ok((seq, GraphServiceRequest::GetNodes)),
-                "UpdateNode" => Ok((
-                    seq,
-                    GraphServiceRequest::UpdateNode(
-                        Node::decode(self.body.as_deref().ok_or(Error::IncompleteEvent)?)
-                            .map_err(|_| Error::Decode)?,
-                    ),
-                )),
+                "UpdateNode" => {
+                    let (id, body) =
+                        parse_node(self.body.as_deref().ok_or(Error::IncompleteEvent)?)?;
+
+                    Ok((seq, GraphServiceRequest::UpdateNode(id, body)))
+                }
                 "RemoveNode" => Ok((
                     seq,
                     GraphServiceRequest::GetNode(parse_node_id(
@@ -51,6 +50,14 @@ impl Message {
             Err(Error::IncompleteEvent)
         }
     }
+}
+
+fn parse_node(body: &[u8]) -> Result<(Uuid, Body), Error> {
+    let node = Node::decode(body).map_err(|_| Error::Decode)?;
+    let id = Uuid::try_parse(&node.id.ok_or(Error::IncompleteEvent)?).map_err(|_| Error::Uuid)?;
+    let body = node.body.ok_or(Error::IncompleteEvent)?;
+
+    Ok((id, body))
 }
 
 fn parse_node_id(body: &[u8]) -> Result<Uuid, Error> {

@@ -5,7 +5,6 @@ rust_library(
         "//cbmix_common:cbmix_common",
         "//third-party:generational-arena",
         "//third-party:ola",
-        "//third-party:petgraph",
         "//third-party:thiserror",
         "//third-party:tokio",
         "//third-party:tracing",

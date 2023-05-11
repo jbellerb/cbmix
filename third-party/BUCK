@@ -1600,12 +1600,6 @@ cargo.rust_library(
     visibility = [],
 )
 
-alias(
-    name = "petgraph",
-    actual = ":petgraph-0.6.3",
-    visibility = ["PUBLIC"],
-)
-
 http_archive(
     name = "petgraph-0.6.3.crate",
     sha256 = "4dd7d28ee937e54fe3080c91faa1c3a46c06de6252988a7f4592ba2310ef22a4",
@@ -1620,12 +1614,6 @@ cargo.rust_library(
     crate = "petgraph",
     crate_root = "petgraph-0.6.3.crate/src/lib.rs",
     edition = "2018",
-    features = [
-        "default",
-        "graphmap",
-        "matrix_graph",
-        "stable_graph",
-    ],
     visibility = [],
     deps = [
         ":fixedbitset-0.4.2",

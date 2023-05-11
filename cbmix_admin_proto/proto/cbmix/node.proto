@@ -7,12 +7,6 @@ message NodeId {
   string id = 1;
 }
 
-// The parameters of an output node.
-message OutputNode {
-  // The id of the node to output.
-  string input = 1;
-}
-
 // The parameters of an input node.
 message InputNode {
   // The DMX universe bytes to assign to a static input.
@@ -25,10 +19,8 @@ message Node {
   optional string id = 1;
   // The description of the node.
   oneof body {
-    // An output node.
-    OutputNode output = 3;
     // An input node.
-    InputNode input = 4;
+    InputNode input = 2;
   }
 }
 

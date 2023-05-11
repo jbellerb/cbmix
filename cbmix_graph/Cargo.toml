@@ -8,7 +8,6 @@ cbmix_common = { workspace = true }
 
 generational-arena = { workspace = true }
 ola = { workspace = true }
-petgraph = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

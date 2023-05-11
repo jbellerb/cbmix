@@ -9,7 +9,7 @@ use anyhow::Error;
 use cbmix_admin::Admin;
 use cbmix_common::shutdown;
 use cbmix_dmx::Dmx;
-use cbmix_graph::{Graph, GraphHandle};
+use cbmix_graph::{Graph, GraphHandle, Node};
 use directories::ProjectDirs;
 use tokio::{
     runtime::Runtime,
@@ -51,11 +51,17 @@ fn main() {
 
         tokio::spawn(graph.serve().instrument(info_span!("graph")));
 
-        if register_nodes(&config, init_handle, &mut dmx).await.is_ok() {
-            tokio::spawn(dmx.serve().instrument(info_span!("dmx")));
-            tokio::spawn(admin.serve().instrument(info_span!("admin")));
-        } else {
-            shutdown.subscribe().force_shutdown().await;
+        match register_nodes(&config, init_handle, &mut dmx).await {
+            Ok(()) => {
+                tokio::spawn(dmx.serve().instrument(info_span!("dmx")));
+                tokio::spawn(admin.serve().instrument(info_span!("admin")));
+            }
+            Err(e) => {
+                error!("failed to register nodes from config file: {}", e);
+                shutdown.subscribe().force_shutdown().await;
+                drop(dmx);
+                drop(admin);
+            }
         }
 
         tokio::select! {
@@ -98,17 +104,22 @@ async fn register_nodes(config: &Config, graph: GraphHandle, dmx: &mut Dmx) -> R
     for (id, input) in &config.input {
         match input {
             InputConfig::Static { channels, .. } => {
-                graph.create_input(*id, channels.clone()).await?;
+                graph
+                    .insert(
+                        *id,
+                        Node::Input {
+                            channels: channels.clone(),
+                        },
+                    )
+                    .await?;
             }
         }
     }
 
-    for (id, output) in &config.output {
+    for output in config.output.values() {
         match output {
             OutputConfig::Sacn { universe, from } => {
-                graph.create_output(*id, *from).await?;
-
-                dmx.add_universe(*universe, *id).await?;
+                dmx.add_universe(*universe, *from).await?;
             }
         }
     }

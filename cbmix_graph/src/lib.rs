@@ -1,18 +1,20 @@
 mod command;
 mod graph;
 mod handle;
+mod node;
+mod subscription;
+mod transaction;
 
 use command::Command;
-use graph::Node;
 use graph::SceneGraph;
 pub use handle::GraphHandle;
+pub use node::Node;
+pub use subscription::GraphUpdate;
 
 use cbmix_common::shutdown;
-pub use generational_arena::{Arena, Index};
-use ola::DmxBuffer;
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{debug, error, warn};
+use tracing::{error, trace};
 use uuid::Uuid;
 
 // UUID namespace ID for scene graph nodes
@@ -22,10 +24,14 @@ const INCOMING_BUFFER_SIZE: usize = 30;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Unable to insert node in graph")]
-    Insert(#[from] graph::Error),
-    #[error("No output with id {0}")]
-    Subscribe(Uuid),
+    #[error("Node does not exist")]
+    MissingNode,
+    #[error("Subscription does not exist")]
+    MissingSubscription,
+    #[error("Unable to insert: {0}")]
+    Insert(graph::Error),
+    #[error("Unable to subscribe: {0}")]
+    Subscribe(graph::Error),
     #[error("Unable to send command to graph manager")]
     Send(#[from] mpsc::error::SendError<Command>),
     #[error("Graph manager suddenly stopped responding")]
@@ -66,95 +72,36 @@ impl Graph {
             };
 
             match event {
-                Command::CreateInput {
-                    id,
-                    channels,
-                    callback,
-                } => {
-                    _ = callback.send(self.create_input(id, channels));
-                }
-                Command::CreateOutput {
-                    id,
-                    input,
-                    callback,
-                } => {
-                    _ = callback.send(self.create_output(id, input));
+                Command::Insert { id, node, callback } => {
+                    trace!("inserting node {}: {:?}", id, node);
+                    _ = callback.send(self.graph.insert(id, node).await.map_err(Error::Insert));
                 }
                 Command::Remove { id, callback } => {
-                    _ = callback.send(self.remove(id));
+                    trace!("removing node {}", id);
+                    _ = callback.send(self.graph.remove(id).await.map_err(|_| Error::MissingNode));
                 }
                 Command::Subscribe {
                     id,
                     subscriber,
                     callback,
                 } => {
-                    _ = callback.send(self.subscribe(id, subscriber));
+                    trace!("subscribing to {}", id);
+                    _ = callback.send(
+                        self.graph
+                            .subscribe(id, subscriber)
+                            .await
+                            .map_err(Error::Subscribe),
+                    );
                 }
-                Command::Unsubscribe {
-                    id,
-                    index,
-                    callback,
-                } => {
-                    _ = callback.send(self.unsubscribe(id, index));
+                Command::Unsubscribe { id, callback } => {
+                    trace!("unsubscribing from {}", id);
+                    _ = callback.send(
+                        self.graph
+                            .unsubscribe(id)
+                            .map_err(|_| Error::MissingSubscription),
+                    );
                 }
             }
-        }
-    }
-
-    fn create_input(&mut self, id: Uuid, channels: DmxBuffer) -> Result<(), Error> {
-        debug!("creating input {:?}", id);
-        self.graph
-            .insert(
-                id,
-                Node::Input {
-                    outputs: Vec::new(),
-                    channels,
-                },
-            )
-            .map_err(Error::Insert)
-    }
-
-    fn create_output(&mut self, id: Uuid, input: Uuid) -> Result<(), Error> {
-        debug!("creating output {:?}", id);
-        self.graph
-            .insert(
-                id,
-                Node::Output {
-                    input: Some(input),
-                    subscribers: Arena::new(),
-                },
-            )
-            .map_err(Error::Insert)
-    }
-
-    fn remove(&mut self, id: Uuid) -> Result<(), Error> {
-        debug!("removing node {:?}", id);
-        Ok(self.graph.remove(id)?)
-    }
-
-    fn subscribe(
-        &mut self,
-        id: Uuid,
-        subscriber: mpsc::Sender<(Uuid, DmxBuffer)>,
-    ) -> Result<Index, Error> {
-        if let Some(Node::Output { subscribers, .. }) = self.graph.node_weight_mut(id) {
-            debug!("registering new subscriber with output {}", id);
-            Ok(subscribers.insert(subscriber))
-        } else {
-            Err(Error::Subscribe(id))
-        }
-    }
-
-    fn unsubscribe(&mut self, id: Uuid, index: Index) -> Result<(), Error> {
-        if let Some(Node::Output { subscribers, .. }) = self.graph.node_weight_mut(id) {
-            debug!("removing subscriber from output {}", id);
-            if subscribers.remove(index).is_none() {
-                warn!("subscriber was not found on output");
-            }
-
-            Ok(())
-        } else {
-            Err(Error::Subscribe(id))
         }
     }
 }

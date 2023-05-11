@@ -1,8 +1,6 @@
 use crate::command::Command;
-use crate::Error;
+use crate::{Error, GraphUpdate, Node};
 
-use generational_arena::Index;
-use ola::DmxBuffer;
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
@@ -16,25 +14,12 @@ impl GraphHandle {
         Self { graph_tx }
     }
 
-    pub async fn create_input(&self, id: Uuid, channels: DmxBuffer) -> Result<(), Error> {
+    pub async fn insert(&self, id: Uuid, node: Node) -> Result<(), Error> {
         let (tx, rx) = oneshot::channel();
         self.graph_tx
-            .send(Command::CreateInput {
+            .send(Command::Insert {
                 id,
-                channels,
-                callback: tx,
-            })
-            .await?;
-
-        rx.await?
-    }
-
-    pub async fn create_output(&self, id: Uuid, input: Uuid) -> Result<(), Error> {
-        let (tx, rx) = oneshot::channel();
-        self.graph_tx
-            .send(Command::CreateOutput {
-                id,
-                input,
+                node,
                 callback: tx,
             })
             .await?;
@@ -54,8 +39,8 @@ impl GraphHandle {
     pub async fn subscribe(
         &self,
         id: Uuid,
-        subscriber: mpsc::Sender<(Uuid, DmxBuffer)>,
-    ) -> Result<Index, Error> {
+        subscriber: mpsc::Sender<GraphUpdate>,
+    ) -> Result<Uuid, Error> {
         let (tx, rx) = oneshot::channel();
         self.graph_tx
             .send(Command::Subscribe {
@@ -68,14 +53,10 @@ impl GraphHandle {
         rx.await?
     }
 
-    pub async fn unsubscribe(&self, id: Uuid, index: Index) -> Result<(), Error> {
+    pub async fn unsubscribe(&self, id: Uuid) -> Result<(), Error> {
         let (tx, rx) = oneshot::channel();
         self.graph_tx
-            .send(Command::Unsubscribe {
-                id,
-                index,
-                callback: tx,
-            })
+            .send(Command::Unsubscribe { id, callback: tx })
             .await?;
 
         rx.await?

@@ -147,7 +147,6 @@ dependencies = [
  "bytes",
  "directories",
  "generational-arena",
- "petgraph",
  "proc-macro2",
  "prost",
  "prost-build",

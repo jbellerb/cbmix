@@ -1,8 +1,6 @@
 pub mod config;
 mod message;
 
-use std::collections::HashMap;
-
 use config::AdminConfig;
 use message::{next, send, Error as MessageError};
 
@@ -12,10 +10,11 @@ use axum::{
     routing::{get, Router},
     Server,
 };
-use cbmix_admin_proto::{GraphServiceRequest, GraphServiceResponse, NodeId, OutputUpdateEvent};
+use cbmix_admin_proto::{
+    node::Body, GraphServiceRequest, GraphServiceResponse, InputNode, NodeId, OutputUpdateEvent,
+};
 use cbmix_common::shutdown;
-use cbmix_graph::{GraphHandle, Index};
-use ola::DmxBuffer;
+use cbmix_graph::{GraphHandle, GraphUpdate, Node};
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tower::ServiceBuilder;
@@ -24,7 +23,6 @@ use tower_http::{
     LatencyUnit,
 };
 use tracing::{error, info, Level};
-use uuid::Uuid;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -32,6 +30,12 @@ pub enum Error {
     Subscribe,
     #[error("Failed to unsubscribe from graph node")]
     Unsubscribe,
+    #[error("Node not present with given id")]
+    Id,
+    #[error("DMX universe must be 512 channels")]
+    Channels(#[from] ola::TryFromBufferError),
+    #[error("Unable to parse UUID")]
+    Uuid(#[from] uuid::Error),
 }
 
 #[derive(Clone, Debug)]
@@ -93,7 +97,6 @@ impl Admin {
 async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) -> Response {
     ws.on_upgrade(|mut socket| async move {
         let (subscriber, mut subscription) = mpsc::channel(100);
-        let mut subscriptions = HashMap::new();
 
         loop {
             tokio::select! {
@@ -103,7 +106,6 @@ async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) 
                             request,
                             &mut state.graph,
                             &subscriber,
-                            &mut subscriptions,
                         ).await;
                         let _ = send(&mut socket, seq, response).await;
                     },
@@ -111,7 +113,7 @@ async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) 
                     _ => continue,
                 },
                 update = subscription.recv() => match update {
-                    Some((id, channels)) => info!("received updated universe: {} -> {:?}", id, channels),
+                    Some(update) => info!("received updated universe: {:?}", update),
                     None => {
                         error!("graph channel closed unexpectedly");
                         break
@@ -130,32 +132,53 @@ async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) 
 async fn handle_request(
     request: GraphServiceRequest,
     graph: &mut GraphHandle,
-    subscriber: &mpsc::Sender<(Uuid, DmxBuffer)>,
-    subscriptions: &mut HashMap<Uuid, Index>,
+    subscriber: &mpsc::Sender<GraphUpdate>,
 ) -> Result<GraphServiceResponse, Error> {
     match request {
         GraphServiceRequest::Subscribe(id) => {
-            let idx = graph
-                .subscribe(id, subscriber.clone())
-                .await
-                .map_err(|_| Error::Subscribe)?;
-            subscriptions.insert(id, idx);
+            let id = graph.subscribe(id, subscriber.clone()).await.map_err(|e| {
+                error!("failed to subscribe: {}", e);
+                Error::Subscribe
+            })?;
 
             Ok(GraphServiceResponse::Subscribe(OutputUpdateEvent {
                 id: Some(NodeId { id: id.to_string() }),
-                channels: Vec::new(),
+                channels: vec![0; 512],
             }))
         }
         GraphServiceRequest::Unsubscribe(id) => {
-            if let Some(idx) = subscriptions.get(&id) {
-                graph
-                    .unsubscribe(id, *idx)
-                    .await
-                    .map_err(|_| Error::Unsubscribe)?;
-            }
+            graph.unsubscribe(id).await.map_err(|e| {
+                error!("failed to unsubscribe: {}", e);
+                Error::Unsubscribe
+            })?;
 
             Ok(GraphServiceResponse::Unsubscribe)
         }
-        _ => unimplemented!("todo"),
+        GraphServiceRequest::GetNode(_id) => unimplemented!("get_node"),
+        GraphServiceRequest::GetNodes => unimplemented!("get_nodes"),
+        GraphServiceRequest::UpdateNode(id, body) => {
+            match body {
+                Body::Input(InputNode { channels }) => {
+                    graph
+                        .insert(
+                            id,
+                            Node::Input {
+                                channels: channels.try_into()?,
+                            },
+                        )
+                        .await
+                        .map_err(|_| Error::Id)?;
+                }
+            }
+
+            Ok(GraphServiceResponse::UpdateNode(NodeId {
+                id: id.to_string(),
+            }))
+        }
+        GraphServiceRequest::RemoveNode(id) => {
+            graph.remove(id).await.map_err(|_| Error::Id)?;
+
+            Ok(GraphServiceResponse::RemoveNode)
+        }
     }
 }

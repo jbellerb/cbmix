@@ -1,285 +1,286 @@
-use std::collections::{
-    hash_map::{Entry, Keys},
-    HashMap, HashSet,
-};
-use std::iter::Copied;
-use std::slice::Iter;
+use std::collections::{hash_map::Entry, HashMap, VecDeque};
 
-use generational_arena::Arena;
+use crate::node::{self, Node};
+use crate::subscription::{self, GraphUpdate, Subscription};
+use crate::transaction::{MapLike, Transaction};
+
+use generational_arena::{Arena, Index};
 use ola::DmxBuffer;
-use petgraph::{
-    data::DataMap,
-    visit::{
-        Data, GraphBase, IntoNeighbors, IntoNeighborsDirected, IntoNodeIdentifiers, NodeCount,
-        Visitable,
-    },
-    Direction,
-};
 use thiserror::Error;
 use tokio::sync::mpsc;
+use tracing::{error, warn};
 use uuid::Uuid;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Node is not an input")]
-    Input,
-    #[error("No output with id {0}")]
-    Subscribe(Uuid),
-    #[error("Node already present with id {0}")]
-    Insert(Uuid),
-    #[error("No node found with id {0}")]
-    Remove(Uuid),
+    #[error("Input {0} does not exist")]
+    MissingInput(u32),
+    #[error("A node does not exist with the given id")]
+    UnknownNode,
+    #[error("A subscription does not exist with the given id")]
+    UnknownSubscription,
+    #[error("{0} while setting up subscription")]
+    Subscribe(#[from] subscription::Error),
+    #[error("Operation would create a dependency cycle")]
+    Cycle,
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct SceneGraph(HashMap<Uuid, Node>);
+pub struct SceneGraph {
+    subscriptions: HashMap<Uuid, Subscription>,
+    nodes: HashMap<Uuid, Node>,
+    node_states: HashMap<Uuid, DmxBuffer>,
+    dependencies: HashMap<Uuid, Dependencies>,
+}
 
 impl SceneGraph {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn insert(&mut self, id: Uuid, node: Node) -> Result<(), Error> {
-        if let Entry::Vacant(n) = self.0.entry(id) {
-            let _ = n.insert(node);
+    pub async fn insert(&mut self, id: Uuid, node: Node) -> Result<(), Error> {
+        let mut dependencies = Transaction::new(&mut self.dependencies);
+        let reverse = match dependencies.get_mut(&id) {
+            Some(node) => {
+                let node = node.clone();
+                Self::disconnect_forward(&mut dependencies, &id, &node.forward);
+                node.reverse
+            }
+            None => Arena::new(),
+        };
+
+        let mut forward = Vec::new();
+        for (index, dependency_id) in node.dependencies().iter().enumerate() {
+            if let Some(dependency_id) = dependency_id {
+                if let Some(dependencies) = dependencies.get_mut(dependency_id) {
+                    let forward_index = dependencies.reverse.insert(Dependent::Node {
+                        id,
+                        index: index as u32,
+                    });
+                    forward.push(Some((*dependency_id, forward_index)));
+                } else {
+                    error!(
+                        "missing input {} of {} found while inserting {}",
+                        index, dependency_id, id
+                    );
+                    return Err(Error::MissingInput(index as u32));
+                }
+            } else {
+                forward.push(None);
+            }
+        }
+
+        let mut nodes = Transaction::new(&mut self.nodes);
+        nodes.insert(id, node);
+        dependencies.insert(id, Dependencies { forward, reverse });
+
+        Self::update(
+            &id,
+            nodes,
+            Transaction::new(&mut self.node_states),
+            dependencies,
+            &mut self.subscriptions,
+        )
+        .await
+    }
+
+    pub async fn remove(&mut self, id: Uuid) -> Result<(), Error> {
+        if let Entry::Occupied(occupied) = self.nodes.entry(id) {
+            occupied.remove();
+
+            if let Some(dependencies) = self.dependencies.get(&id) {
+                let Dependencies { forward, reverse } = dependencies.clone();
+
+                Self::disconnect_forward(&mut self.dependencies, &id, &forward);
+                self.disconnect_reverse(&id, &reverse).await;
+            } else {
+                warn!("dependency not found for subscription {}", id);
+            };
 
             Ok(())
         } else {
-            Err(Error::Insert(id))
+            Err(Error::UnknownNode)
         }
     }
 
-    pub fn remove(&mut self, id: Uuid) -> Result<(), Error> {
-        if let Some(node) = self.0.remove(&id) {
-            match node {
-                Node::Input { outputs, .. } => {
-                    for output in outputs {
-                        if let Some(Node::Output { input, .. }) = self.0.get_mut(&output) {
-                            if *input == Some(id) {
-                                *input = None;
+    fn disconnect_forward<D>(dependencies: &mut D, id: &Uuid, forward: &[Option<(Uuid, Index)>])
+    where
+        D: MapLike<Uuid, Dependencies>,
+    {
+        for (dependency_id, index) in forward.iter().flatten() {
+            if let Some(dependency) = dependencies.get_mut(dependency_id) {
+                dependency.reverse.remove(*index);
+            } else {
+                warn!(
+                    "missing dependency {} encountered while removing {}",
+                    dependency_id, id
+                );
+            }
+        }
+    }
+
+    async fn disconnect_reverse(&mut self, id: &Uuid, reverse: &Arena<Dependent>) {
+        for (_, dependent) in reverse {
+            match dependent {
+                Dependent::Node { id: node_id, index } => match self.nodes.get_mut(node_id) {
+                    Some(node) => {
+                        node.unlink(*index);
+                        self.dependencies
+                            .get_mut(node_id)
+                            .expect("get dependencies of updated node")
+                            .forward[*index as usize] = None;
+                        if let Err(e) = Self::update(
+                            node_id,
+                            Transaction::new(&mut self.nodes),
+                            Transaction::new(&mut self.node_states),
+                            Transaction::new(&mut self.dependencies),
+                            &mut self.subscriptions,
+                        )
+                        .await
+                        {
+                            warn!("while disconnecting dependent nodes: {}", e);
+                        };
+                    }
+                    None => warn!(
+                        "missing dependent {} encountered while removing {}",
+                        node_id, id
+                    ),
+                },
+                Dependent::Subscription {
+                    id: subscription_id,
+                } => match self.subscriptions.remove(subscription_id) {
+                    Some(subscription) => subscription.close().await,
+                    None => warn!(
+                        "missing subscription {} encountered while removing {}",
+                        subscription_id, id
+                    ),
+                },
+            }
+        }
+    }
+
+    async fn update<'a>(
+        id: &Uuid,
+        mut nodes: Transaction<'a, Uuid, Node>,
+        mut node_states: Transaction<'a, Uuid, DmxBuffer>,
+        mut dependencies: Transaction<'a, Uuid, Dependencies>,
+        subscriptions: &mut HashMap<Uuid, Subscription>,
+    ) -> Result<(), Error> {
+        let mut updates = Vec::new();
+
+        let mut targets = VecDeque::new();
+        targets.push_back(Dependent::Node {
+            id: *id,
+            index: Default::default(),
+        });
+
+        while let Some(target) = targets.pop_front() {
+            match target {
+                Dependent::Node { id: node_id, .. } => {
+                    if let Some(node) = nodes.get(&node_id) {
+                        match node.update(&node_states) {
+                            Ok(state) => {
+                                node_states.insert(node_id, state);
+                                let dependents = &dependencies
+                                    .get(&node_id)
+                                    .expect("get dependents of updated node")
+                                    .reverse;
+                                targets.reserve(dependents.len());
+                                for (_, dependent) in dependents.iter() {
+                                    match dependent {
+                                        Dependent::Node { id: dep_id, .. } if dep_id == id => {
+                                            return Err(Error::Cycle)
+                                        }
+                                        _ => targets.push_back(dependent.clone()),
+                                    }
+                                }
+                            }
+                            Err(node::Error::NoInput(index)) => {
+                                warn!("node {} had an invalid input {}, unlinking", node_id, index);
+                                nodes
+                                    .get_mut(&node_id)
+                                    .expect("get contents of updated node")
+                                    .unlink(index);
+                                dependencies
+                                    .get_mut(&node_id)
+                                    .expect("get dependencies of updated node")
+                                    .forward[index as usize] = None;
+                                targets.push_front(target);
                             }
                         }
+                    } else {
+                        return Err(Error::UnknownNode);
                     }
                 }
-                Node::Output { input, .. } => {
-                    if let Some(input) = input {
-                        if let Some(Node::Input { outputs, .. }) = self.0.get_mut(&input) {
-                            if let Some(pos) = outputs.iter().position(|x| x == &id) {
-                                outputs.swap_remove(pos);
-                            }
-                        }
-                    }
-                }
+                Dependent::Subscription {
+                    id: subscription_id,
+                } => updates.push(subscription_id),
+            }
+        }
+
+        for update in updates {
+            if let Some(subscription) = subscriptions.get_mut(&update) {
+                subscription.update(&node_states).await?;
+            } else {
+                warn!("failed to update missing subscription {}", update);
+            }
+        }
+
+        nodes.commit();
+        node_states.commit();
+        dependencies.commit();
+
+        Ok(())
+    }
+
+    pub async fn subscribe(
+        &mut self,
+        input: Uuid,
+        channel: mpsc::Sender<GraphUpdate>,
+    ) -> Result<Uuid, Error> {
+        if let Some(input_dependencies) = self.dependencies.get_mut(&input) {
+            let id = Uuid::new_v4(); // slow...
+
+            let index = input_dependencies
+                .reverse
+                .insert(Dependent::Subscription { id });
+            self.subscriptions.insert(
+                id,
+                Subscription::new(id, input, index, &self.node_states, channel).await?,
+            );
+
+            Ok(id)
+        } else {
+            Err(Error::UnknownNode)
+        }
+    }
+
+    pub fn unsubscribe(&mut self, id: Uuid) -> Result<(), Error> {
+        if let Entry::Occupied(occupied) = self.subscriptions.entry(id) {
+            let subscription = occupied.get();
+            if let Some(input_dependencies) = self.dependencies.get_mut(&subscription.input) {
+                input_dependencies.reverse.remove(subscription.index);
+            } else {
+                warn!("dependency not found for subscription {}", id);
             }
 
+            occupied.remove();
+
             Ok(())
         } else {
-            Err(Error::Remove(id))
-        }
-    }
-
-    pub fn node_weight_mut(&mut self, id: Uuid) -> Option<&mut Node> {
-        self.0.get_mut(&id)
-    }
-}
-
-impl GraphBase for SceneGraph {
-    type NodeId = Uuid;
-    type EdgeId = ();
-}
-
-impl Data for SceneGraph {
-    type NodeWeight = Node;
-    type EdgeWeight = ();
-}
-
-impl DataMap for SceneGraph {
-    fn node_weight(&self, id: Self::NodeId) -> Option<&Self::NodeWeight> {
-        self.0.get(&id)
-    }
-
-    fn edge_weight(&self, _id: Self::EdgeId) -> Option<&Self::EdgeWeight> {
-        Some(&())
-    }
-}
-
-impl NodeCount for SceneGraph {
-    fn node_count(&self) -> usize {
-        self.0.len()
-    }
-}
-
-impl Visitable for SceneGraph {
-    type Map = HashSet<Uuid>;
-
-    fn visit_map(&self) -> Self::Map {
-        HashSet::with_capacity(self.node_count())
-    }
-
-    fn reset_map(&self, map: &mut Self::Map) {
-        map.clear();
-    }
-}
-
-impl<'a> IntoNodeIdentifiers for &'a SceneGraph {
-    type NodeIdentifiers = Copied<Keys<'a, Uuid, Node>>;
-
-    fn node_identifiers(self) -> Self::NodeIdentifiers {
-        self.0.keys().copied()
-    }
-}
-
-impl<'a> IntoNeighbors for &'a SceneGraph {
-    type Neighbors = Neighbors<'a>;
-
-    fn neighbors(self, a: Self::NodeId) -> Self::Neighbors {
-        // petgraph panics if a is out of bounds
-        let node = self.0.get(&a).unwrap();
-
-        node.neighbors()
-    }
-}
-
-impl<'a> IntoNeighborsDirected for &'a SceneGraph {
-    type NeighborsDirected = NeighborsDirected<'a>;
-
-    fn neighbors_directed(self, a: Self::NodeId, dir: Direction) -> Self::NeighborsDirected {
-        // petgraph panics if a is out of bounds
-        let node = self.0.get(&a).unwrap();
-
-        match dir {
-            Direction::Outgoing => node.outgoing(),
-            Direction::Incoming => node.incoming(),
+            Err(Error::UnknownSubscription)
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum Node {
-    Input {
-        outputs: Vec<Uuid>,
-        channels: DmxBuffer,
-    },
-    Output {
-        input: Option<Uuid>,
-        subscribers: Arena<mpsc::Sender<(Uuid, DmxBuffer)>>,
-    },
+struct Dependencies {
+    forward: Vec<Option<(Uuid, Index)>>,
+    reverse: Arena<Dependent>,
 }
 
-impl<'a> Node {
-    fn get_incoming(&'a self, i: usize) -> Option<Uuid> {
-        match self {
-            Node::Input { .. } => None,
-            Node::Output { input, .. } => match i {
-                0 => *input,
-                _ => None,
-            },
-        }
-    }
-
-    fn incoming_size_hint(&'a self) -> (usize, Option<usize>) {
-        match self {
-            Node::Input { .. } => (0, Some(0)),
-            Node::Output { input, .. } => {
-                if input.is_some() {
-                    (1, Some(1))
-                } else {
-                    (0, Some(0))
-                }
-            }
-        }
-    }
-}
-
-impl<'a> Node {
-    fn outgoing(&'a self) -> NeighborsDirected<'a> {
-        match self {
-            Node::Input { outputs, .. } => {
-                NeighborsDirected::Outgoing(Some(outputs.iter().copied()))
-            }
-            Node::Output { .. } => NeighborsDirected::Outgoing(None),
-        }
-    }
-
-    fn incoming(&'a self) -> NeighborsDirected<'a> {
-        NeighborsDirected::Incoming {
-            index: match self {
-                Node::Input { .. } => 0,
-                Node::Output { .. } => 1,
-            },
-            node: self,
-        }
-    }
-
-    fn neighbors(&'a self) -> Neighbors<'a> {
-        Neighbors {
-            inputs: Some(self.incoming()),
-            outputs: self.outgoing(),
-        }
-    }
-}
-
-pub struct Neighbors<'a> {
-    inputs: Option<NeighborsDirected<'a>>,
-    outputs: NeighborsDirected<'a>,
-}
-
-impl<'a> Iterator for Neighbors<'a> {
-    type Item = Uuid;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inputs) = &mut self.inputs {
-            if let Some(next) = inputs.next() {
-                return Some(next);
-            }
-
-            self.inputs = None;
-        }
-
-        self.outputs.next()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        if let Some(inputs) = &self.inputs {
-            match (self.outputs.size_hint(), inputs.size_hint()) {
-                ((l_out, None), (l_in, None)) => (l_out + l_in, None),
-                ((l_out, Some(u_out)), (l_in, None)) => (l_out + l_in, Some(u_out)),
-                ((l_out, None), (l_in, Some(u_in))) => (l_out + l_in, Some(u_in)),
-                ((l_out, Some(u_out)), (l_in, Some(u_in))) => (l_out + l_in, Some(u_out + u_in)),
-            }
-        } else {
-            self.outputs.size_hint()
-        }
-    }
-}
-
-pub enum NeighborsDirected<'a> {
-    Outgoing(Option<Copied<Iter<'a, Uuid>>>),
-    Incoming { index: usize, node: &'a Node },
-}
-
-impl<'a> Iterator for NeighborsDirected<'a> {
-    type Item = Uuid;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            NeighborsDirected::Outgoing(iter) => iter.as_mut().and_then(|i| i.next()),
-            NeighborsDirected::Incoming { index, node } => match index {
-                0 => None,
-                _ => {
-                    *index -= 1;
-                    node.get_incoming(*index)
-                }
-            },
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        match self {
-            NeighborsDirected::Outgoing(iter) => {
-                iter.as_ref().map(|i| i.size_hint()).unwrap_or((0, Some(0)))
-            }
-            NeighborsDirected::Incoming { node, .. } => node.incoming_size_hint(),
-        }
-    }
+#[derive(Clone, Debug)]
+enum Dependent {
+    Node { id: Uuid, index: u32 },
+    Subscription { id: Uuid },
 }

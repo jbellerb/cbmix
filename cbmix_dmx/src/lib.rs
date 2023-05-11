@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use cbmix_common::shutdown;
-use cbmix_graph::GraphHandle;
+use cbmix_graph::{GraphHandle, GraphUpdate};
 use ola::{client::StreamingClientAsync, connect_async, DmxBuffer};
 use thiserror::Error;
 use tokio::{net::TcpStream, sync::mpsc};
@@ -23,8 +23,8 @@ pub enum Error {
 pub struct Dmx {
     client: StreamingClientAsync<TcpStream>,
     graph: GraphHandle,
-    subscription: mpsc::Sender<(Uuid, DmxBuffer)>,
-    graph_rx: mpsc::Receiver<(Uuid, DmxBuffer)>,
+    subscription: mpsc::Sender<GraphUpdate>,
+    graph_rx: mpsc::Receiver<GraphUpdate>,
     universes: HashMap<Uuid, u32>,
     shutdown: shutdown::Receiver,
 }
@@ -47,19 +47,19 @@ impl Dmx {
     }
 
     pub async fn add_universe(&mut self, universe: u32, id: Uuid) -> Result<(), Error> {
-        self.universes.insert(id, universe);
-
-        self.graph
+        let subscription = self
+            .graph
             .subscribe(id, self.subscription.clone())
             .await
             .map_err(|_| Error::Graph)?;
+        self.universes.insert(subscription, universe);
 
         Ok(())
     }
 
     pub async fn serve(mut self) {
         loop {
-            let (id, channels) = tokio::select! {
+            let update = tokio::select! {
                 update = self.graph_rx.recv() => match update {
                     Some(update) => update,
                     None => return,
@@ -67,9 +67,16 @@ impl Dmx {
                 _ = self.shutdown.recv() => return,
             };
 
-            match self.update_universe(&id, &channels).await {
-                Ok(()) => {}
-                Err(e) => error!("failed to update universe: {}", e),
+            match update {
+                GraphUpdate::Update { id, channels } => {
+                    match self.update_universe(&id, &channels).await {
+                        Ok(()) => {}
+                        Err(e) => error!("failed to update universe: {}", e),
+                    }
+                }
+                GraphUpdate::Closed { id } => {
+                    error!("dmx subscription {} closed", id)
+                }
             }
         }
     }

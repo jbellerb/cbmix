@@ -216,7 +216,6 @@ dependencies = [
  "cbmix_common",
  "generational-arena",
  "ola",
- "petgraph",
  "thiserror",
  "tokio",
  "tracing",
@@ -669,7 +668,7 @@ dependencies = [
 [[package]]
 name = "ola"
 version = "0.1.0"
-source = "git+https://github.com/jbellerb/libola-rs#c0278827660b4d11106fb019da3eb0a13d017e26"
+source = "git+https://github.com/jbellerb/libola-rs#e1b3a4618b31e72dec4c82e32e472a6b8c392278"
 dependencies = [
  "bytes",
  "proc-macro2",

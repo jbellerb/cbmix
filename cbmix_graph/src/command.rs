@@ -1,20 +1,13 @@
-use crate::Error;
+use crate::{Error, GraphUpdate, Node};
 
-use generational_arena::Index;
-use ola::DmxBuffer;
 use tokio::sync::{mpsc, oneshot};
 use uuid::Uuid;
 
 #[derive(Debug)]
 pub enum Command {
-    CreateInput {
+    Insert {
         id: Uuid,
-        channels: DmxBuffer,
-        callback: oneshot::Sender<Result<(), Error>>,
-    },
-    CreateOutput {
-        id: Uuid,
-        input: Uuid,
+        node: Node,
         callback: oneshot::Sender<Result<(), Error>>,
     },
     Remove {
@@ -23,12 +16,11 @@ pub enum Command {
     },
     Subscribe {
         id: Uuid,
-        subscriber: mpsc::Sender<(Uuid, DmxBuffer)>,
-        callback: oneshot::Sender<Result<Index, Error>>,
+        subscriber: mpsc::Sender<GraphUpdate>,
+        callback: oneshot::Sender<Result<Uuid, Error>>,
     },
     Unsubscribe {
         id: Uuid,
-        index: Index,
         callback: oneshot::Sender<Result<(), Error>>,
     },
 }

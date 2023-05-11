@@ -15,7 +15,6 @@ axum = { version = "0.6", features = ["macros", "ws"] }
 directories = "5.0"
 generational-arena = "0.2"
 ola = { git = "https://github.com/jbellerb/libola-rs", features = ["tokio"] }
-petgraph = "0.6"
 prost = "0.11"
 prost-build = "0.11"
 regex = "1.7"

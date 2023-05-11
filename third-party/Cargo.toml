@@ -18,7 +18,6 @@ bytes = "1.4"
 directories = "5.0"
 generational-arena = "0.2"
 # ola = { version = "0.1.0", features = ["tokio"] }
-petgraph = "0.6"
 proc-macro2 = "1"
 prost = "0.11"
 prost-build = "0.11"

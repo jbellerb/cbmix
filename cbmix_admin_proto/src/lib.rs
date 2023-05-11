@@ -1,6 +1,7 @@
 pub mod message;
 
 use message::{Message, MessageType};
+use node::Body;
 
 use prost::Message as MessageTrait;
 use thiserror::Error;
@@ -27,7 +28,7 @@ pub enum GraphServiceRequest {
     Unsubscribe(Uuid),
     GetNode(Uuid),
     GetNodes,
-    UpdateNode(Node),
+    UpdateNode(Uuid, Body),
     RemoveNode(Uuid),
 }
 
