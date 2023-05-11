@@ -13,6 +13,22 @@ message InputNode {
   bytes channels = 1;
 }
 
+// The parameters of an addition node.
+message AddNode {
+  // The first operand to the addition.
+  optional string a = 1;
+  // The second operand to the addition.
+  optional string b = 2;
+}
+
+// The parameters of a multiplication node.
+message MultiplyNode {
+  // The first operand to the multiplication.
+  optional string a = 1;
+  // The second operand to the multiplication.
+  optional string b = 2;
+}
+
 // A node describing either an input, output, or function to the scene graph.
 message Node {
   // The id of the node.
@@ -20,7 +36,11 @@ message Node {
   // The description of the node.
   oneof body {
     // An input node.
-    InputNode input = 2;
+    InputNode input = 3;
+    // An addition node.
+    AddNode add = 4;
+    // A multiplication node.
+    MultiplyNode multiply = 5;
   }
 }
 

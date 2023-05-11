@@ -3,13 +3,13 @@ pub mod config;
 use std::env::var;
 use std::process::exit;
 
-use config::{Config, InputConfig, OutputConfig};
+use config::{Config, InputConfig, NodeConfig, OutputConfig};
 
 use anyhow::Error;
 use cbmix_admin::Admin;
 use cbmix_common::shutdown;
 use cbmix_dmx::Dmx;
-use cbmix_graph::{Graph, GraphHandle, Node};
+use cbmix_graph::{Graph, GraphHandle, Node, NAMESPACE_SCENE};
 use directories::ProjectDirs;
 use tokio::{
     runtime::Runtime,
@@ -17,6 +17,7 @@ use tokio::{
     time::timeout,
 };
 use tracing::{debug, error, info, info_span, instrument::Instrument, warn};
+use uuid::Uuid;
 
 fn main() {
     tracing_subscriber::fmt()
@@ -101,27 +102,47 @@ async fn unix_signal(kind: SignalKind) {
 }
 
 async fn register_nodes(config: &Config, graph: GraphHandle, dmx: &mut Dmx) -> Result<(), Error> {
-    for (id, input) in &config.input {
-        match input {
-            InputConfig::Static { channels, .. } => {
-                graph
-                    .insert(
-                        *id,
-                        Node::Input {
-                            channels: channels.clone(),
-                        },
-                    )
-                    .await?;
-            }
-        }
+    for (id, InputConfig { .. }) in &config.input {
+        let id = Uuid::new_v5(&NAMESPACE_SCENE, id.as_bytes());
+        let node = Node::Input {
+            channels: Default::default(),
+        };
+
+        graph.insert(id, node).await?;
     }
 
-    for output in config.output.values() {
-        match output {
-            OutputConfig::Sacn { universe, from } => {
-                dmx.add_universe(*universe, *from).await?;
+    for (id, node) in &config.node {
+        let id = Uuid::new_v5(&NAMESPACE_SCENE, id.as_bytes());
+        let node = match node {
+            NodeConfig::Static { channels } => Node::Input {
+                channels: channels.clone(),
+            },
+            NodeConfig::Add { a, b } => {
+                let a = a
+                    .as_ref()
+                    .map(|s| Uuid::new_v5(&NAMESPACE_SCENE, s.as_bytes()));
+                let b = b
+                    .as_ref()
+                    .map(|s| Uuid::new_v5(&NAMESPACE_SCENE, s.as_bytes()));
+                Node::Add { a, b }
             }
-        }
+            NodeConfig::Multiply { a, b } => {
+                let a = a
+                    .as_ref()
+                    .map(|s| Uuid::new_v5(&NAMESPACE_SCENE, s.as_bytes()));
+                let b = b
+                    .as_ref()
+                    .map(|s| Uuid::new_v5(&NAMESPACE_SCENE, s.as_bytes()));
+                Node::Multiply { a, b }
+            }
+        };
+
+        graph.insert(id, node).await?;
+    }
+
+    for (_, OutputConfig { universe, from }) in config.output.iter() {
+        dmx.add_universe(*universe, Uuid::new_v5(&NAMESPACE_SCENE, from.as_bytes()))
+            .await?;
     }
 
     Ok(())

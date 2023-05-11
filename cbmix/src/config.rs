@@ -1,18 +1,17 @@
-use std::collections::BTreeMap;
+use std::fmt;
 use std::fs::read_to_string;
+use std::marker::PhantomData;
 use std::path::Path;
 use std::time::Duration;
 
 use cbmix_admin::config::AdminConfig;
-use cbmix_graph::NAMESPACE_SCENE;
 use ola::DmxBuffer;
 use regex::Regex;
 use serde::{
-    de::{Deserializer, Error as DeError, Unexpected},
+    de::{Deserializer, Error as DeError, MapAccess, Unexpected, Visitor},
     Deserialize,
 };
 use thiserror::Error;
-use uuid::Uuid;
 
 pub const DEFAULT_SHUTDOWN_GRACE_PERIOD: Duration = Duration::from_secs(30);
 
@@ -22,18 +21,19 @@ pub enum Error {
     LoadError(#[from] toml::de::Error),
 }
 
+pub type PairList<K, V> = Vec<(K, V)>;
+
 #[derive(Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     #[serde(default)]
     pub admin: AdminConfig,
-
-    #[serde(default, deserialize_with = "deserialize_ident_map")]
-    pub input: BTreeMap<Uuid, InputConfig>,
-
-    #[serde(default, deserialize_with = "deserialize_ident_map")]
-    pub output: BTreeMap<Uuid, OutputConfig>,
-
+    #[serde(default, deserialize_with = "deserialize_pair_list")]
+    pub input: PairList<String, InputConfig>,
+    #[serde(deserialize_with = "deserialize_pair_list")]
+    pub output: PairList<String, OutputConfig>,
+    #[serde(deserialize_with = "deserialize_pair_list")]
+    pub node: PairList<String, NodeConfig>,
     #[serde(
         default = "default_shutdown_grace_period",
         deserialize_with = "deserialize_duration"
@@ -42,22 +42,33 @@ pub struct Config {
 }
 
 #[derive(Deserialize, Clone, Debug)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum InputConfig {
-    Static {
-        name: String,
-        #[serde(deserialize_with = "deserialize_buffer")]
-        channels: DmxBuffer,
-    },
+#[serde(deny_unknown_fields)]
+pub struct InputConfig {
+    _name: String,
+    _universe: u32,
 }
 
 #[derive(Deserialize, Clone, Debug)]
-#[serde(untagged, deny_unknown_fields)]
-pub enum OutputConfig {
-    Sacn {
-        universe: u32,
-        #[serde(deserialize_with = "deserialize_ident")]
-        from: Uuid,
+#[serde(deny_unknown_fields)]
+pub struct OutputConfig {
+    pub universe: u32,
+    pub from: String,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum NodeConfig {
+    Static {
+        #[serde(deserialize_with = "deserialize_buffer")]
+        channels: DmxBuffer,
+    },
+    Add {
+        a: Option<String>,
+        b: Option<String>,
+    },
+    Multiply {
+        a: Option<String>,
+        b: Option<String>,
     },
 }
 
@@ -78,6 +89,7 @@ impl Default for Config {
             admin: Default::default(),
             input: Default::default(),
             output: Default::default(),
+            node: Default::default(),
             shutdown_grace_period: default_shutdown_grace_period(),
         }
     }
@@ -87,23 +99,41 @@ fn default_shutdown_grace_period() -> Duration {
     DEFAULT_SHUTDOWN_GRACE_PERIOD
 }
 
-pub fn deserialize_ident_map<'de, D, T>(deserializer: D) -> Result<BTreeMap<Uuid, T>, D::Error>
+pub fn deserialize_pair_list<'de, D, K, V>(deserializer: D) -> Result<PairList<K, V>, D::Error>
 where
     D: Deserializer<'de>,
-    T: Deserialize<'de>,
+    K: Deserialize<'de>,
+    V: Deserialize<'de>,
 {
-    BTreeMap::<String, T>::deserialize(deserializer).map(|map| {
-        map.into_iter()
-            .map(|(k, v)| (Uuid::new_v5(&NAMESPACE_SCENE, k.as_bytes()), v))
-            .collect()
-    })
-}
+    struct PairVisitor<K, V> {
+        m: PhantomData<fn() -> PairList<K, V>>,
+    }
 
-pub fn deserialize_ident<'de, D>(deserializer: D) -> Result<Uuid, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    String::deserialize(deserializer).map(|ident| Uuid::new_v5(&NAMESPACE_SCENE, ident.as_bytes()))
+    impl<'de, K, V> Visitor<'de> for PairVisitor<K, V>
+    where
+        K: Deserialize<'de>,
+        V: Deserialize<'de>,
+    {
+        type Value = PairList<K, V>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a list of key-value pairs")
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let mut list = Vec::with_capacity(access.size_hint().unwrap_or(0));
+            while let Some((key, value)) = access.next_entry()? {
+                list.push((key, value));
+            }
+
+            Ok(list)
+        }
+    }
+
+    deserializer.deserialize_map(PairVisitor { m: PhantomData })
 }
 
 pub fn deserialize_buffer<'de, D>(deserializer: D) -> Result<DmxBuffer, D::Error>

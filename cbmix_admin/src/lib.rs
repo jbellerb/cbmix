@@ -1,6 +1,8 @@
 mod channel;
 pub mod config;
 
+use std::collections::HashSet;
+
 use channel::{next, send, Error as ChannelError};
 use config::AdminConfig;
 
@@ -23,7 +25,7 @@ use tower_http::{
     trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
-use tracing::{error, info, trace, Level};
+use tracing::{error, info, trace, warn, Level};
 use uuid::Uuid;
 
 #[derive(Error, Debug)]
@@ -105,20 +107,35 @@ impl Admin {
 async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) -> Response {
     ws.on_upgrade(|mut socket| async move {
         let (subscriber, mut subscription) = mpsc::channel(100);
+        let mut subscriptions = HashSet::new();
 
         loop {
             tokio::select! {
                 message = next(&mut socket) => match message {
                     Some(Ok((seq, request))) => {
-                        let message =
-                            match handle_request(request, &mut state.graph, &subscriber).await {
-                                Ok(res) => res.to_message(seq),
-                                Err(e) => error_message(seq, e.to_string()),
-                            };
+                        let message = match handle_request(
+                            request,
+                            &mut state.graph,
+                            &subscriber,
+                            &mut subscriptions,
+                        )
+                        .await
+                        {
+                            Ok(res) => res.to_message(seq),
+                            Err(e) => error_message(seq, e.to_string()),
+                        };
 
                         let _ = send(&mut socket, message).await;
                     }
-                    None | Some(Err(ChannelError::Socket)) => return,
+                    None | Some(Err(ChannelError::Socket)) => {
+                        for subscription in subscriptions.iter() {
+                            if let Err(e) = state.graph.unsubscribe(*subscription).await {
+                                warn!("error removing subscription {}: {}", subscription, e);
+                            }
+                        }
+
+                        return
+                    }
                     _ => continue,
                 },
                 update = subscription.recv() => match update {
@@ -154,6 +171,7 @@ async fn handle_request(
     request: GraphServiceRequest,
     graph: &mut GraphHandle,
     subscriber: &mpsc::Sender<GraphUpdate>,
+    subscriptions: &mut HashSet<Uuid>,
 ) -> Result<GraphServiceResponse, Error> {
     match request {
         GraphServiceRequest::Subscribe(id) => {
@@ -162,6 +180,7 @@ async fn handle_request(
                 Error::Subscribe
             })?;
 
+            subscriptions.insert(id);
             Ok(GraphServiceResponse::Subscribe(id))
         }
         GraphServiceRequest::Unsubscribe(id) => {
@@ -170,6 +189,7 @@ async fn handle_request(
                 Error::Unsubscribe
             })?;
 
+            subscriptions.remove(&id);
             Ok(GraphServiceResponse::Unsubscribe)
         }
         GraphServiceRequest::GetNode(id) => {

@@ -33,6 +33,7 @@ pub(super) async fn next(
                     Err(e) => Some(Err(e)),
                 }
             }
+            WsMessage::Close(_) => None,
             _ => {
                 warn!("recieved unexpected websocket message: {:?}", msg);
                 Some(Err(Error::UnexpectedMessage))

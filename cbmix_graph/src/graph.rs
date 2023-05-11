@@ -11,7 +11,7 @@ use generational_arena::{Arena, Index};
 use ola::DmxBuffer;
 use thiserror::Error;
 use tokio::sync::mpsc;
-use tracing::{error, warn};
+use tracing::{error, trace, warn};
 use uuid::Uuid;
 
 #[derive(Error, Debug)]
@@ -235,7 +235,14 @@ impl SceneGraph {
 
         for update in updates {
             if let Some(subscription) = subscriptions.get_mut(&update) {
-                subscription.update(&node_states).await?;
+                if subscription.update(&node_states).await.is_err() {
+                    warn!("removing stale subscription {}", update);
+                    if let Some(input_dependencies) = dependencies.get_mut(&subscription.input) {
+                        input_dependencies.reverse.remove(subscription.index);
+                    } else {
+                        warn!("dependency not found for subscription {}", id);
+                    }
+                }
             } else {
                 warn!("failed to update missing subscription {}", update);
             }
@@ -263,6 +270,7 @@ impl SceneGraph {
                 id,
                 Subscription::new(id, input, index, &self.node_states, channel).await?,
             );
+            trace!("created new subscription {}", id);
 
             Ok(id)
         } else {
