@@ -1,9 +1,10 @@
+pub mod event;
 pub mod message;
 
 use message::{Message, MessageType};
 use node::Body;
 
-use prost::Message as MessageTrait;
+use prost::Message as ProstMessage;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -23,6 +24,15 @@ pub enum Error {
     Uuid,
 }
 
+pub fn error_message(seq: u32, text: String) -> Message {
+    Message {
+        r#type: MessageType::ResponseError as i32,
+        seq: Some(seq),
+        name: None,
+        body: Some(text.into_bytes()),
+    }
+}
+
 pub enum GraphServiceRequest {
     Subscribe(Uuid),
     Unsubscribe(Uuid),
@@ -33,7 +43,7 @@ pub enum GraphServiceRequest {
 }
 
 pub enum GraphServiceResponse {
-    Subscribe(OutputUpdateEvent),
+    Subscribe(SubscriptionId),
     Unsubscribe,
     GetNode(Node),
     GetNodes(Nodes),

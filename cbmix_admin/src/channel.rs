@@ -1,8 +1,5 @@
 use axum::extract::ws::{Message as WsMessage, WebSocket};
-use cbmix_admin_proto::{
-    message::{Message, MessageType},
-    GraphServiceRequest, GraphServiceResponse,
-};
+use cbmix_admin_proto::{message::Message, GraphServiceRequest};
 use prost::Message as MessageTrait;
 use thiserror::Error;
 use tracing::{error, info, warn};
@@ -52,21 +49,7 @@ pub(super) async fn next(
     }
 }
 
-pub(super) async fn send(
-    socket: &mut WebSocket,
-    seq: u32,
-    response: Result<GraphServiceResponse, crate::Error>,
-) -> Result<(), Error> {
-    let message = match response {
-        Ok(res) => res.to_message(seq),
-        Err(e) => Message {
-            r#type: MessageType::ResponseError as i32,
-            seq: Some(seq),
-            name: None,
-            body: Some(e.to_string().into_bytes()),
-        },
-    };
-
+pub(super) async fn send(socket: &mut WebSocket, message: Message) -> Result<(), Error> {
     socket
         .send(WsMessage::Binary(message.encode_to_vec()))
         .await

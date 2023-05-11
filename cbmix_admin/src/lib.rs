@@ -1,8 +1,8 @@
+mod channel;
 pub mod config;
-mod message;
 
+use channel::{next, send, Error as ChannelError};
 use config::AdminConfig;
-use message::{next, send, Error as MessageError};
 
 use axum::{
     extract::{ws::WebSocketUpgrade, State},
@@ -11,7 +11,8 @@ use axum::{
     Server,
 };
 use cbmix_admin_proto::{
-    node::Body, GraphServiceRequest, GraphServiceResponse, InputNode, NodeId, OutputUpdateEvent,
+    error_message, event::Event, node::Body, GraphServiceRequest, GraphServiceResponse, InputNode,
+    NodeId, SubscriptionId, SubscriptionUpdateEvent,
 };
 use cbmix_common::shutdown;
 use cbmix_graph::{GraphHandle, GraphUpdate, Node};
@@ -22,7 +23,7 @@ use tower_http::{
     trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
     LatencyUnit,
 };
-use tracing::{error, info, Level};
+use tracing::{error, info, trace, Level};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -102,22 +103,35 @@ async fn ws_handler(State(mut state): State<ServerState>, ws: WebSocketUpgrade) 
             tokio::select! {
                 message = next(&mut socket) => match message {
                     Some(Ok((seq, request))) => {
-                        let response = handle_request(
-                            request,
-                            &mut state.graph,
-                            &subscriber,
-                        ).await;
-                        let _ = send(&mut socket, seq, response).await;
-                    },
-                    None | Some(Err(MessageError::Socket)) => return,
+                        let message =
+                            match handle_request(request, &mut state.graph, &subscriber).await {
+                                Ok(res) => res.to_message(seq),
+                                Err(e) => error_message(seq, e.to_string()),
+                            };
+
+                        let _ = send(&mut socket, message).await;
+                    }
+                    None | Some(Err(ChannelError::Socket)) => return,
                     _ => continue,
                 },
                 update = subscription.recv() => match update {
-                    Some(update) => info!("received updated universe: {:?}", update),
+                    Some(update) => match update {
+                        GraphUpdate::Update { id, channels } => {
+                            trace!("received updated universe: {} -> {:?}", id, channels);
+                            let message = SubscriptionUpdateEvent {
+                                id: Some(NodeId { id: id.to_string() }),
+                                channels: channels.into(),
+                            }
+                            .to_message();
+
+                            let _ = send(&mut socket, message).await;
+                        }
+                        GraphUpdate::Closed { id } => info!("subscription closed: {}", id),
+                    },
                     None => {
                         error!("graph channel closed unexpectedly");
-                        break
-                    },
+                        break;
+                    }
                 },
                 _ = state.shutdown.recv() => break,
             }
@@ -141,9 +155,8 @@ async fn handle_request(
                 Error::Subscribe
             })?;
 
-            Ok(GraphServiceResponse::Subscribe(OutputUpdateEvent {
-                id: Some(NodeId { id: id.to_string() }),
-                channels: vec![0; 512],
+            Ok(GraphServiceResponse::Subscribe(SubscriptionId {
+                id: id.to_string(),
             }))
         }
         GraphServiceRequest::Unsubscribe(id) => {

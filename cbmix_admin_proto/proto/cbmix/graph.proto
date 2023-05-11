@@ -5,18 +5,29 @@ package cbmix;
 import "cbmix/node.proto";
 import "google/protobuf/empty.proto";
 
-// An event representing a change in a scene.
-message OutputUpdateEvent {
-  // The updated output node.
+// An event representing a change to a subscribed node.
+message SubscriptionUpdateEvent {
+  // The subscription id.
   NodeId id = 1;
-  // The values of the node.
+  // The new values of the subscribed node.
   bytes channels = 2;
+}
+
+// An event representing a subscription being force closed.
+message SubscriptionCloseEvent {
+  // The subscription id.
+  NodeId id = 1;
+}
+
+// A UUID representing a subscription.
+message SubscriptionId {
+  string id = 1;
 }
 
 // Scene graph service for the admin interface.
 service GraphService {
   // Subscribe to an output node.
-  rpc Subscribe(NodeId) returns (OutputUpdateEvent);
+  rpc Subscribe(NodeId) returns (SubscriptionId);
   // Unsubscribe from an output node.
   rpc Unsubscribe(NodeId) returns (google.protobuf.Empty);
   // Get a single node from the scene graph.
