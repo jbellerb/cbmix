@@ -41,7 +41,7 @@ impl Message {
                 }
                 "RemoveNode" => Ok((
                     seq,
-                    GraphServiceRequest::GetNode(parse_node_id(
+                    GraphServiceRequest::RemoveNode(parse_node_id(
                         self.body.as_ref().ok_or(Error::IncompleteEvent)?,
                     )?),
                 )),
