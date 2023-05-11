@@ -1,0 +1,1 @@
+deb [signed-by=/etc/apt/trusted.gpg.d/cbmix.gpg] https://raw.githubusercontent.com/jbellerb/cbmix/repo/jammy ./

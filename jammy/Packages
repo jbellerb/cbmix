@@ -1,0 +1,15 @@
+Package: cbmix
+Version: 0.1.0
+Architecture: amd64
+Maintainer: Jared Beller <jbellerb@vt.edu>
+Depends: libc6 (>= 2.14), libgcc-s1 (>= 3.0), ola (>= 0.10.8.nojsmin-2)
+Filename: ./cbmix_0.1.0_amd64.deb
+Size: 3947478
+MD5sum: e5f9cd4d341d8b607e12645d400d4b87
+SHA1: 1f28ac4ca5c750c84ca685bb9339f1a4b9d97bb5
+SHA256: f95786c624ea6a8c05e98ab51a333714e65670d02a5a90a5cc3c84cfbc898c2c
+Section: electronics
+Priority: optional
+Description: cbmix
+ Lighting control software for using and mixing different sACN sources.
+
