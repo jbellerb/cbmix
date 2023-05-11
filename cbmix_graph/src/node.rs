@@ -14,9 +14,21 @@ pub enum Error {
 
 #[derive(Clone, Debug)]
 pub enum Node {
-    Input { channels: DmxBuffer },
-    Add { a: Option<Uuid>, b: Option<Uuid> },
-    Multiply { a: Option<Uuid>, b: Option<Uuid> },
+    Input {
+        channels: DmxBuffer,
+    },
+    Add {
+        a: Option<Uuid>,
+        b: Option<Uuid>,
+    },
+    Multiply {
+        a: Option<Uuid>,
+        b: Option<Uuid>,
+    },
+    Rewire {
+        input: Option<Uuid>,
+        map: Box<[u16; 512]>,
+    },
 }
 
 impl Node {
@@ -25,6 +37,7 @@ impl Node {
             Node::Input { .. } => Vec::new(),
             Node::Add { a, b } => vec![*a, *b],
             Node::Multiply { a, b } => vec![*a, *b],
+            Node::Rewire { input, .. } => vec![*input],
         }
     }
 
@@ -55,6 +68,20 @@ impl Node {
                     .unwrap()),
                 _ => Ok(DmxBuffer::new()),
             },
+            Node::Rewire { input, map } => {
+                match input.map(|n| states.get(&n).ok_or(Error::NoInput(0))) {
+                    Some(input) => {
+                        let input = input?;
+                        let mut buffer = DmxBuffer::new();
+                        for (idx, c) in zip(map.iter(), buffer.iter_mut()) {
+                            *c = input[*idx as usize];
+                        }
+
+                        Ok(buffer)
+                    }
+                    None => Ok(DmxBuffer::new()),
+                }
+            }
         }
     }
 
@@ -71,6 +98,11 @@ impl Node {
                 1 => *b = None,
                 _ => {}
             },
+            Node::Rewire { input, .. } => {
+                if index == 0 {
+                    *input = None;
+                }
+            }
         }
     }
 }

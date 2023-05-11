@@ -1,4 +1,4 @@
-use crate::{node::Body, AddNode, InputNode, MultiplyNode, Node};
+use crate::{node::Body, AddNode, InputNode, MultiplyNode, Node, RewireNode};
 
 use uuid::Uuid;
 
@@ -17,6 +17,10 @@ pub fn to_proto(id: &Uuid, node: &cbmix_graph::Node) -> Node {
                 a: a.map(|u| u.to_string()),
                 b: b.map(|u| u.to_string()),
             }),
+            cbmix_graph::Node::Rewire { input, map } => Body::Rewire(RewireNode {
+                input: input.map(|u| u.to_string()),
+                map: map.iter().map(|i| *i as i32).collect(),
+            }),
         }),
     }
 }
@@ -34,6 +38,15 @@ pub fn from_proto(node: &Node) -> Option<(Option<Uuid>, cbmix_graph::Node)> {
             Body::Multiply(MultiplyNode { a, b }) => cbmix_graph::Node::Multiply {
                 a: a.and_then(|s| Uuid::try_parse(&s).ok()),
                 b: b.and_then(|s| Uuid::try_parse(&s).ok()),
+            },
+            Body::Rewire(RewireNode { input, map }) => cbmix_graph::Node::Rewire {
+                input: input.and_then(|s| Uuid::try_parse(&s).ok()),
+                map: map
+                    .iter()
+                    .map(|i| *i as u16)
+                    .collect::<Vec<u16>>()
+                    .try_into()
+                    .ok()?,
             },
         };
 

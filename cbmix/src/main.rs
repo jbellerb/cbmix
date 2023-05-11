@@ -5,7 +5,7 @@ use std::process::exit;
 
 use config::{Config, InputConfig, NodeConfig, OutputConfig};
 
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use cbmix_admin::Admin;
 use cbmix_common::shutdown;
 use cbmix_dmx::Dmx;
@@ -130,6 +130,19 @@ async fn register_nodes(config: &Config, graph: GraphHandle, dmx: &mut Dmx) -> R
                     .as_ref()
                     .map(|s| Uuid::new_v5(&NAMESPACE_SCENE, s.as_bytes()));
                 Node::Multiply { a, b }
+            }
+            NodeConfig::Rewire { input, map } => {
+                let input = input
+                    .as_ref()
+                    .map(|s| Uuid::new_v5(&NAMESPACE_SCENE, s.as_bytes()));
+                Node::Rewire {
+                    input,
+                    map: Box::new(
+                        (&map[..])
+                            .try_into()
+                            .map_err(|_| anyhow!("rewire map was not 512 long"))?,
+                    ),
+                }
             }
         };
 

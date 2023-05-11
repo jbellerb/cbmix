@@ -70,6 +70,10 @@ pub enum NodeConfig {
         a: Option<String>,
         b: Option<String>,
     },
+    Rewire {
+        input: Option<String>,
+        map: Vec<u16>,
+    },
 }
 
 impl Config {

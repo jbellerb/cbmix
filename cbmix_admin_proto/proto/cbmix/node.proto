@@ -29,6 +29,15 @@ message MultiplyNode {
   optional string b = 2;
 }
 
+// The parameters of a rewire node.
+message RewireNode {
+  // The node to apply the rewiring to.
+  optional string input = 1;
+  // The mapping for each channel in the input. These values must be less than
+  // 512. This is not checked but very bad things will happen if you do it.
+  repeated int32 map = 2;
+}
+
 // A node describing either an input, output, or function to the scene graph.
 message Node {
   // The id of the node.
@@ -41,6 +50,8 @@ message Node {
     AddNode add = 4;
     // A multiplication node.
     MultiplyNode multiply = 5;
+    // A rewire node.
+    RewireNode rewire = 6;
   }
 }
 

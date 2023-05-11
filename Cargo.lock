@@ -669,7 +669,7 @@ dependencies = [
 [[package]]
 name = "ola"
 version = "0.1.0"
-source = "git+https://github.com/jbellerb/libola-rs#76f23d4cb5e2aedf30801160e595b995ef187704"
+source = "git+https://github.com/jbellerb/libola-rs#d1dce7b86b07becd52aec5762c171a790c9df16c"
 dependencies = [
  "bytes",
  "proc-macro2",
