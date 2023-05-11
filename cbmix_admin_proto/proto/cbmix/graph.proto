@@ -29,7 +29,7 @@ service GraphService {
   // Subscribe to an output node.
   rpc Subscribe(NodeId) returns (SubscriptionId);
   // Unsubscribe from an output node.
-  rpc Unsubscribe(NodeId) returns (google.protobuf.Empty);
+  rpc Unsubscribe(SubscriptionId) returns (google.protobuf.Empty);
   // Get a single node from the scene graph.
   rpc GetNode(NodeId) returns (Node);
   // Get all nodes in the scene graph.

@@ -1,4 +1,5 @@
-use crate::{node::Body, Error, GraphServiceRequest, Node, NodeId};
+use crate::entity::from_proto;
+use crate::{Error, GraphServiceRequest, Node, NodeId};
 
 use prost::Message as MessageTrait;
 use uuid::Uuid;
@@ -52,12 +53,10 @@ impl Message {
     }
 }
 
-fn parse_node(body: &[u8]) -> Result<(Uuid, Body), Error> {
+fn parse_node(body: &[u8]) -> Result<(Uuid, cbmix_graph::Node), Error> {
     let node = Node::decode(body).map_err(|_| Error::Decode)?;
-    let id = Uuid::try_parse(&node.id.ok_or(Error::IncompleteEvent)?).map_err(|_| Error::Uuid)?;
-    let body = node.body.ok_or(Error::IncompleteEvent)?;
 
-    Ok((id, body))
+    from_proto(&node).ok_or(Error::IncompleteEvent)
 }
 
 fn parse_node_id(body: &[u8]) -> Result<Uuid, Error> {

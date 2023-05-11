@@ -182,6 +182,7 @@ dependencies = [
 name = "cbmix_admin_proto"
 version = "0.1.0"
 dependencies = [
+ "cbmix_graph",
  "prost",
  "prost-build",
  "thiserror",

@@ -5,6 +5,7 @@ rust_library(
         "OUT_DIR": "$(location :cbmix_admin_proto-build-script-run)",
     },
     deps = [
+        "//cbmix_graph:cbmix_graph",
         "//third-party:prost",
         "//third-party:thiserror",
         "//third-party:uuid",

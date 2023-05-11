@@ -1,4 +1,7 @@
-use std::collections::{hash_map::Entry, HashMap, VecDeque};
+use std::collections::{
+    hash_map::{self, Entry},
+    HashMap, VecDeque,
+};
 
 use crate::node::{self, Node};
 use crate::subscription::{self, GraphUpdate, Subscription};
@@ -101,6 +104,18 @@ impl SceneGraph {
         } else {
             Err(Error::UnknownNode)
         }
+    }
+
+    pub fn get(&self, id: &Uuid) -> Result<&Node, Error> {
+        if let Some(node) = self.nodes.get(id) {
+            Ok(node)
+        } else {
+            Err(Error::UnknownNode)
+        }
+    }
+
+    pub fn iter(&self) -> hash_map::Iter<Uuid, Node> {
+        self.nodes.iter()
     }
 
     fn disconnect_forward<D>(dependencies: &mut D, id: &Uuid, forward: &[Option<(Uuid, Index)>])

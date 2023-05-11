@@ -11,11 +11,11 @@ use axum::{
     Server,
 };
 use cbmix_admin_proto::{
-    error_message, event::Event, node::Body, GraphServiceRequest, GraphServiceResponse, InputNode,
-    NodeId, SubscriptionId, SubscriptionUpdateEvent,
+    error_message, event::Event, GraphServiceRequest, GraphServiceResponse, NodeId,
+    SubscriptionUpdateEvent,
 };
 use cbmix_common::shutdown;
-use cbmix_graph::{GraphHandle, GraphUpdate, Node};
+use cbmix_graph::{GraphHandle, GraphUpdate};
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tower::ServiceBuilder;
@@ -31,8 +31,14 @@ pub enum Error {
     Subscribe,
     #[error("Failed to unsubscribe from graph node")]
     Unsubscribe,
-    #[error("Node not present with given id")]
-    Id,
+    #[error("Failed to get node")]
+    Get,
+    #[error("Failed to get nodes")]
+    List,
+    #[error("Failed to update node")]
+    Update,
+    #[error("Failed to remove node")]
+    Remove,
     #[error("DMX universe must be 512 channels")]
     Channels(#[from] ola::TryFromBufferError),
     #[error("Unable to parse UUID")]
@@ -155,9 +161,7 @@ async fn handle_request(
                 Error::Subscribe
             })?;
 
-            Ok(GraphServiceResponse::Subscribe(SubscriptionId {
-                id: id.to_string(),
-            }))
+            Ok(GraphServiceResponse::Subscribe(id))
         }
         GraphServiceRequest::Unsubscribe(id) => {
             graph.unsubscribe(id).await.map_err(|e| {
@@ -167,29 +171,35 @@ async fn handle_request(
 
             Ok(GraphServiceResponse::Unsubscribe)
         }
-        GraphServiceRequest::GetNode(_id) => unimplemented!("get_node"),
-        GraphServiceRequest::GetNodes => unimplemented!("get_nodes"),
-        GraphServiceRequest::UpdateNode(id, body) => {
-            match body {
-                Body::Input(InputNode { channels }) => {
-                    graph
-                        .insert(
-                            id,
-                            Node::Input {
-                                channels: channels.try_into()?,
-                            },
-                        )
-                        .await
-                        .map_err(|_| Error::Id)?;
-                }
-            }
+        GraphServiceRequest::GetNode(id) => {
+            let node = graph.get(id).await.map_err(|e| {
+                error!("failed to get node {}: {}", id, e);
+                Error::Get
+            })?;
 
-            Ok(GraphServiceResponse::UpdateNode(NodeId {
-                id: id.to_string(),
-            }))
+            Ok(GraphServiceResponse::GetNode(id, node))
+        }
+        GraphServiceRequest::GetNodes => {
+            let nodes = graph.list().await.map_err(|e| {
+                error!("failed to get nodes: {}", e);
+                Error::List
+            })?;
+
+            Ok(GraphServiceResponse::GetNodes(nodes))
+        }
+        GraphServiceRequest::UpdateNode(id, body) => {
+            graph.insert(id, body).await.map_err(|e| {
+                error!("failed to update node {}: {}", id, e);
+                Error::Update
+            })?;
+
+            Ok(GraphServiceResponse::UpdateNode(id))
         }
         GraphServiceRequest::RemoveNode(id) => {
-            graph.remove(id).await.map_err(|_| Error::Id)?;
+            graph.remove(id).await.map_err(|e| {
+                error!("failed to remove node {}: {}", id, e);
+                Error::Remove
+            })?;
 
             Ok(GraphServiceResponse::RemoveNode)
         }

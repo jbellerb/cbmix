@@ -1,8 +1,9 @@
+mod entity;
 pub mod event;
 pub mod message;
 
+use entity::to_proto;
 use message::{Message, MessageType};
-use node::Body;
 
 use prost::Message as ProstMessage;
 use thiserror::Error;
@@ -38,29 +39,46 @@ pub enum GraphServiceRequest {
     Unsubscribe(Uuid),
     GetNode(Uuid),
     GetNodes,
-    UpdateNode(Uuid, Body),
+    UpdateNode(Uuid, cbmix_graph::Node),
     RemoveNode(Uuid),
 }
 
 pub enum GraphServiceResponse {
-    Subscribe(SubscriptionId),
+    Subscribe(Uuid),
     Unsubscribe,
-    GetNode(Node),
-    GetNodes(Nodes),
-    UpdateNode(NodeId),
+    GetNode(Uuid, cbmix_graph::Node),
+    GetNodes(Vec<(Uuid, cbmix_graph::Node)>),
+    UpdateNode(Uuid),
     RemoveNode,
 }
 
 impl GraphServiceResponse {
     pub fn to_message(&self, seq: u32) -> Message {
         let (name, body) = match self {
-            GraphServiceResponse::Subscribe(update) => ("Subscribe", Some(update.encode_to_vec())),
+            GraphServiceResponse::Subscribe(id) => (
+                "Subscribe",
+                Some(SubscriptionId { id: id.to_string() }.encode_to_vec()),
+            ),
             GraphServiceResponse::Unsubscribe => ("Unsubscribe", None),
-            GraphServiceResponse::GetNode(node) => ("GetNode", Some(node.encode_to_vec())),
-            GraphServiceResponse::GetNodes(nodes) => ("GetNodes", Some(nodes.encode_to_vec())),
-            GraphServiceResponse::UpdateNode(node_id) => {
-                ("UpdateNode", Some(node_id.encode_to_vec()))
+            GraphServiceResponse::GetNode(id, node) => {
+                ("GetNode", Some(to_proto(id, node).encode_to_vec()))
             }
+            GraphServiceResponse::GetNodes(nodes) => (
+                "GetNodes",
+                Some(
+                    Nodes {
+                        nodes: nodes
+                            .iter()
+                            .map(|(i, n)| to_proto(i, n))
+                            .collect::<Vec<Node>>(),
+                    }
+                    .encode_to_vec(),
+                ),
+            ),
+            GraphServiceResponse::UpdateNode(id) => (
+                "UpdateNode",
+                Some(NodeId { id: id.to_string() }.encode_to_vec()),
+            ),
             GraphServiceResponse::RemoveNode => ("RemoveNode", None),
         };
 

@@ -36,6 +36,22 @@ impl GraphHandle {
         rx.await?
     }
 
+    pub async fn get(&self, id: Uuid) -> Result<Node, Error> {
+        let (tx, rx) = oneshot::channel();
+        self.graph_tx
+            .send(Command::Get { id, callback: tx })
+            .await?;
+
+        rx.await?
+    }
+
+    pub async fn list(&self) -> Result<Vec<(Uuid, Node)>, Error> {
+        let (tx, rx) = oneshot::channel();
+        self.graph_tx.send(Command::List { callback: tx }).await?;
+
+        Ok(rx.await?)
+    }
+
     pub async fn subscribe(
         &self,
         id: Uuid,

@@ -14,6 +14,13 @@ pub enum Command {
         id: Uuid,
         callback: oneshot::Sender<Result<(), Error>>,
     },
+    Get {
+        id: Uuid,
+        callback: oneshot::Sender<Result<Node, Error>>,
+    },
+    List {
+        callback: oneshot::Sender<Vec<(Uuid, Node)>>,
+    },
     Subscribe {
         id: Uuid,
         subscriber: mpsc::Sender<GraphUpdate>,

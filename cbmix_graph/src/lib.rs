@@ -80,6 +80,22 @@ impl Graph {
                     trace!("removing node {}", id);
                     _ = callback.send(self.graph.remove(id).await.map_err(|_| Error::MissingNode));
                 }
+                Command::Get { id, callback } => {
+                    _ = callback.send(
+                        self.graph
+                            .get(&id)
+                            .map(|n| n.clone())
+                            .map_err(|_| Error::MissingNode),
+                    );
+                }
+                Command::List { callback } => {
+                    _ = callback.send(
+                        self.graph
+                            .iter()
+                            .map(|(i, n)| (*i, n.clone()))
+                            .collect::<Vec<(Uuid, Node)>>(),
+                    );
+                }
                 Command::Subscribe {
                     id,
                     subscriber,
