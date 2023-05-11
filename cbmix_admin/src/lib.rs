@@ -24,6 +24,7 @@ use tower_http::{
     LatencyUnit,
 };
 use tracing::{error, info, trace, Level};
+use uuid::Uuid;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -188,6 +189,7 @@ async fn handle_request(
             Ok(GraphServiceResponse::GetNodes(nodes))
         }
         GraphServiceRequest::UpdateNode(id, body) => {
+            let id = id.unwrap_or_else(Uuid::new_v4);
             graph.insert(id, body).await.map_err(|e| {
                 error!("failed to update node {}: {}", id, e);
                 Error::Update

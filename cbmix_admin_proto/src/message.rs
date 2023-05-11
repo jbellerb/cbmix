@@ -1,5 +1,5 @@
 use crate::entity::from_proto;
-use crate::{Error, GraphServiceRequest, Node, NodeId};
+use crate::{Error, GraphServiceRequest, Node, NodeId, SubscriptionId};
 
 use prost::Message as MessageTrait;
 use uuid::Uuid;
@@ -22,7 +22,7 @@ impl Message {
                 )),
                 "Unsubscribe" => Ok((
                     seq,
-                    GraphServiceRequest::Unsubscribe(parse_node_id(
+                    GraphServiceRequest::Unsubscribe(parse_subscription_id(
                         self.body.as_ref().ok_or(Error::IncompleteEvent)?,
                     )?),
                 )),
@@ -53,7 +53,7 @@ impl Message {
     }
 }
 
-fn parse_node(body: &[u8]) -> Result<(Uuid, cbmix_graph::Node), Error> {
+fn parse_node(body: &[u8]) -> Result<(Option<Uuid>, cbmix_graph::Node), Error> {
     let node = Node::decode(body).map_err(|_| Error::Decode)?;
 
     from_proto(&node).ok_or(Error::IncompleteEvent)
@@ -61,6 +61,12 @@ fn parse_node(body: &[u8]) -> Result<(Uuid, cbmix_graph::Node), Error> {
 
 fn parse_node_id(body: &[u8]) -> Result<Uuid, Error> {
     let node_id = NodeId::decode(body).map_err(|_| Error::Decode)?;
+
+    Uuid::try_parse(&node_id.id).map_err(|_| Error::Uuid)
+}
+
+fn parse_subscription_id(body: &[u8]) -> Result<Uuid, Error> {
+    let node_id = SubscriptionId::decode(body).map_err(|_| Error::Decode)?;
 
     Uuid::try_parse(&node_id.id).map_err(|_| Error::Uuid)
 }

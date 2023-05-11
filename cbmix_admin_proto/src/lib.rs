@@ -39,7 +39,7 @@ pub enum GraphServiceRequest {
     Unsubscribe(Uuid),
     GetNode(Uuid),
     GetNodes,
-    UpdateNode(Uuid, cbmix_graph::Node),
+    UpdateNode(Option<Uuid>, cbmix_graph::Node),
     RemoveNode(Uuid),
 }
 

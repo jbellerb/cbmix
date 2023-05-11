@@ -13,7 +13,7 @@ pub fn to_proto(id: &Uuid, node: &cbmix_graph::Node) -> Node {
     }
 }
 
-pub fn from_proto(node: &Node) -> Option<(Uuid, cbmix_graph::Node)> {
+pub fn from_proto(node: &Node) -> Option<(Option<Uuid>, cbmix_graph::Node)> {
     if let Some(body) = node.body.clone() {
         let body = match body {
             Body::Input(InputNode { channels }) => cbmix_graph::Node::Input {
@@ -21,10 +21,7 @@ pub fn from_proto(node: &Node) -> Option<(Uuid, cbmix_graph::Node)> {
             },
         };
 
-        Some((
-            node.id.as_ref().and_then(|u| Uuid::try_parse(u).ok())?,
-            body,
-        ))
+        Some((node.id.as_ref().and_then(|u| Uuid::try_parse(u).ok()), body))
     } else {
         None
     }
