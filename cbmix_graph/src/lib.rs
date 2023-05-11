@@ -66,9 +66,9 @@ impl Graph {
             let event = tokio::select! {
                 event = self.incoming_rx.recv() => match event {
                     Some(event) => event,
-                    None => return,
+                    None => break,
                 },
-                _ = self.shutdown.recv() => return,
+                _ = self.shutdown.recv() => break,
             };
 
             match event {
@@ -119,5 +119,7 @@ impl Graph {
                 }
             }
         }
+
+        self.shutdown.force_shutdown().await
     }
 }

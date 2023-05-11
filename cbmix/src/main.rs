@@ -102,13 +102,9 @@ async fn unix_signal(kind: SignalKind) {
 }
 
 async fn register_nodes(config: &Config, graph: GraphHandle, dmx: &mut Dmx) -> Result<(), Error> {
-    for (id, InputConfig { .. }) in &config.input {
-        let id = Uuid::new_v5(&NAMESPACE_SCENE, id.as_bytes());
-        let node = Node::Input {
-            channels: Default::default(),
-        };
-
-        graph.insert(id, node).await?;
+    for (id, InputConfig { universe, .. }) in &config.input {
+        dmx.add_input(*universe, Uuid::new_v5(&NAMESPACE_SCENE, id.as_bytes()))
+            .await?;
     }
 
     for (id, node) in &config.node {
@@ -141,7 +137,7 @@ async fn register_nodes(config: &Config, graph: GraphHandle, dmx: &mut Dmx) -> R
     }
 
     for (_, OutputConfig { universe, from }) in config.output.iter() {
-        dmx.add_universe(*universe, Uuid::new_v5(&NAMESPACE_SCENE, from.as_bytes()))
+        dmx.add_output(*universe, Uuid::new_v5(&NAMESPACE_SCENE, from.as_bytes()))
             .await?;
     }
 

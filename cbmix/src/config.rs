@@ -44,8 +44,8 @@ pub struct Config {
 #[derive(Deserialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct InputConfig {
-    _name: String,
-    _universe: u32,
+    pub name: String,
+    pub universe: u32,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -116,8 +116,8 @@ where
     {
         type Value = PairList<K, V>;
 
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a list of key-value pairs")
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "a list of key-value pairs")
         }
 
         fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
