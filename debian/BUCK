@@ -1,0 +1,8 @@
+load("//rules:debian.bzl", "debian_package")
+
+debian_package(
+    name = "cbmix-deb",
+    control = "control",
+    extras = { "usr/local/bin/cbmix": "//cbmix:cbmix-bin" },
+    root = glob(["etc/**"]),
+)

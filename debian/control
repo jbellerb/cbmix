@@ -1,0 +1,9 @@
+Package: cbmix
+Version: 0.1.0
+Architecture: amd64
+Maintainer: Jared Beller <jbellerb@vt.edu>
+Depends: libc6 (>= 2.14), libgcc-s1 (>= 3.0), ola (>= 0.10.8.nojsmin-2)
+Section: electronics
+Priority: optional
+Description: cbmix
+ Lighting control software for using and mixing different sACN sources.

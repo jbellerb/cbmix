@@ -18,4 +18,5 @@ rust_binary(
         "//third-party:tracing-subscriber",
         "//third-party:uuid",
     ],
+    visibility = ["//debian:cbmix-deb"],
 )

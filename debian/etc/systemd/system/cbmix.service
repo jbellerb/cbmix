@@ -1,0 +1,31 @@
+[Unit]
+Description=cbmix Lighting Control
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=nobody
+ExecStart=/usr/local/bin/cbmix
+Environment="RUST_LOG=debug"
+CapabilityBoundingSet=
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateMounts=true
+PrivateTmp=true
+PrivateUsers=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service ~@privileged ~@resources
+
+[Install]
+WantedBy=multi-user.target
